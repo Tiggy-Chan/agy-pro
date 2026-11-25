@@ -104,12 +104,22 @@ func TestParsersAndVault(t *testing.T) {
 	if !runner.BackendLogQuotaRe.MatchString(realBackendLine) {
 		t.Fatal("real backend HTTP 429 ResourceExhausted line was not matched!")
 	}
-	// Live quota verification must reject healthy accounts even on transient 429
-	if runner.IsQuotaTrulyExhausted(&vault.Quota{H5Rem: fptr(74), D7Rem: fptr(13)}) {
-		t.Fatal("healthy account must NOT be treated as exhausted!")
+	// Live quota verification:
+	// 1. Healthy account (both 5h & 7d > 0.5%) -> transient 429 MUST NOT failover
+	if ok, _ := runner.ShouldFailoverAfterProbe(&vault.Quota{H5Rem: fptr(74), D7Rem: fptr(13)}, realBackendLine); ok {
+		t.Fatal("healthy account must NOT failover on transient 429!")
 	}
-	if !runner.IsQuotaTrulyExhausted(&vault.Quota{H5Rem: fptr(0), D7Rem: fptr(50)}) {
-		t.Fatal("0% 5h account MUST be treated as exhausted!")
+	// 2. 7-day exhausted while 5-hour still has 71% -> MUST failover as "7d"!
+	if ok, kind := runner.ShouldFailoverAfterProbe(&vault.Quota{H5Rem: fptr(71), D7Rem: fptr(0)}, realBackendLine); !ok || kind != "7d" {
+		t.Fatalf("7d=0%% with 5h=71%% MUST failover as 7d, got ok=%v kind=%q", ok, kind)
+	}
+	// 3. 5-hour exhausted while 7-day still has 50% -> MUST failover as "5h"!
+	if ok, kind := runner.ShouldFailoverAfterProbe(&vault.Quota{H5Rem: fptr(0), D7Rem: fptr(50)}, realBackendLine); !ok || kind != "5h" {
+		t.Fatalf("5h=0%% with 7d=50%% MUST failover as 5h, got ok=%v kind=%q", ok, kind)
+	}
+	// 4. Probe timed out on fatal turn-ending agent executor 429 -> MUST fallback failover as "suspected"!
+	if ok, kind := runner.ShouldFailoverAfterProbe(&vault.Quota{Error: "超时 (35s)"}, realBackendLine); !ok || kind != "suspected" {
+		t.Fatalf("fatal 429 with probe timeout MUST fallback failover as suspected, got ok=%v kind=%q", ok, kind)
 	}
 	stripped := runner.StripLockedArgs([]string{"--model", "flash", "-r", "abc"}, false)
 	if len(stripped) != 2 || stripped[0] != "-r" || stripped[1] != "abc" {

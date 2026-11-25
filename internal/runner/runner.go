@@ -39,7 +39,7 @@ var TerminalResetSeq = []byte(
 		"\x1b[0m",
 )
 
-const ResumeContinuePrompt = "刚刚因上一个账号 5 小时额度耗尽，agy-pro 已自动切换到新账号并恢复当前会话。请先核对刚才中断前的进展与本地文件状态，然后直接继续完成未完成的任务。"
+const ResumeContinuePrompt = "刚刚因上一个账号额度耗尽（5小时或7天池触顶），agy-pro 已自动切换到新账号并恢复当前会话。请先核对刚才中断前的进展与本地文件状态，然后直接继续完成未完成的任务。"
 
 const uuidPat = `([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`
 
@@ -54,8 +54,15 @@ var (
 
 	// BackendLogQuotaRe matches ONLY genuine agy Go backend RPC quota errors in --log-file.
 	// It NEVER matches user messages, assistant text, tool output, or RerenderAll scrollback!
+	// Covers both 5-hour AND 7-day exhaustion (including G1 AI credits balance fallback errors).
 	BackendLogQuotaRe = regexp.MustCompile(
-		`(?i)errorreport\.go:\d+\].*(?:ResourceExhausted,\s*HTTP\s*429|RESOURCE_EXHAUSTED\s*\(code\s*429\)|Individual quota reached)`,
+		`(?i)errorreport\.go:\d+\].*(?:ResourceExhausted,\s*HTTP\s*429|RESOURCE_EXHAUSTED\s*\(code\s*429\)|Individual quota reached|AI credits balance is too low|insufficient.*credits)`,
+	)
+
+	// FatalTurnQuotaRe identifies errors logged AFTER agy exhausted all internal retries and
+	// aborted the turn (used as fallback when live quota probing itself times out).
+	FatalTurnQuotaRe = regexp.MustCompile(
+		`(?i)errorreport\.go:\d+\].*agent executor error:.*(?:ResourceExhausted,\s*HTTP\s*429|RESOURCE_EXHAUSTED\s*\(code\s*429\)|AI credits balance is too low|Individual quota reached)`,
 	)
 
 	// PrintModeQuotaRe is used ONLY in non-interactive --print mode (fresh single turn, no historical redraw).
@@ -67,14 +74,15 @@ var (
 )
 
 type RunResult struct {
-	ReturnCode    int
-	Stdout        string
-	Stderr        string
-	QuotaHit      bool
-	QuotaText     string
-	VerifiedQuota *vault.Quota
-	ConvID        string
-	AuthEmail     string
+	ReturnCode     int
+	Stdout         string
+	Stderr         string
+	QuotaHit       bool
+	ExhaustionKind string // "7d", "5h", or "suspected"
+	QuotaText      string
+	VerifiedQuota  *vault.Quota
+	ConvID         string
+	AuthEmail      string
 }
 
 func StripANSI(s string) string {
@@ -233,19 +241,46 @@ func BuildAgyArgs(baseArgs []string, logPath, model, resumeID, promptInteractive
 	return append(args, baseArgs...)
 }
 
-// IsQuotaTrulyExhausted checks a live quota probe result: returns true ONLY when
-// Google explicitly confirms 5h remaining <= 0.5% or 7d remaining <= 0.5%.
-func IsQuotaTrulyExhausted(q *vault.Quota) bool {
+// ExhaustionKind inspects a live quota probe result and returns:
+//   - "7d" if weekly remaining <= 0.5% (checked FIRST because 7d exhaustion blocks even when 5h > 0%!)
+//   - "5h" if 5-hour remaining <= 0.5%
+//   - ""   if account still has usable quota OR if probe errored/timed out
+func ExhaustionKind(q *vault.Quota) string {
 	if q == nil || q.Error != "" {
-		return false
-	}
-	if q.H5Rem != nil && *q.H5Rem <= 0.5 {
-		return true
+		return ""
 	}
 	if q.D7Rem != nil && *q.D7Rem <= 0.5 {
-		return true
+		return "7d"
 	}
-	return false
+	if q.H5Rem != nil && *q.H5Rem <= 0.5 {
+		return "5h"
+	}
+	return ""
+}
+
+// IsQuotaTrulyExhausted checks a live quota probe result: returns true when
+// Google confirms either 7d remaining <= 0.5% OR 5h remaining <= 0.5%.
+func IsQuotaTrulyExhausted(q *vault.Quota) bool {
+	return ExhaustionKind(q) != ""
+}
+
+// ShouldFailoverAfterProbe decides whether to switch accounts after a backend 429:
+//   - If live probe succeeded and confirmed 7d or 5h <= 0.5% -> failover with exact kind ("7d" / "5h")
+//   - If live probe succeeded and BOTH 5h & 7d > 0.5% -> transient 429, DO NOT failover!
+//   - If live probe itself timed out/errored AND the backend line was a fatal turn-ending
+//     `agent executor error: ... ResourceExhausted` -> fallback failover ("suspected") with short cooldown
+func ShouldFailoverAfterProbe(q *vault.Quota, backendLine string) (bool, string) {
+	if kind := ExhaustionKind(q); kind != "" {
+		return true, kind
+	}
+	if q != nil && q.Error == "" && q.H5Rem != nil && q.D7Rem != nil {
+		// Live probe succeeded and proved BOTH 5h and 7d still have remaining quota -> transient blip
+		return false, ""
+	}
+	if FatalTurnQuotaRe.MatchString(backendLine) {
+		return true, "suspected"
+	}
+	return false, ""
 }
 
 // TerminalGuard saves and unconditionally restores raw termios AND modern terminal modes.
@@ -457,6 +492,7 @@ func RunInteractiveOnce(
 		convID          = initialConvID
 		authEmail       = ""
 		quotaHit        = false
+		exhaustionKind  = ""
 		quotaText       = ""
 		verifiedQuota   *vault.Quota
 		logOffset       int64
@@ -482,16 +518,19 @@ loop:
 			break loop
 		case vr := <-verifyCh:
 			verifying = false
-			if IsQuotaTrulyExhausted(vr.q) {
+			if shouldSwitch, kind := ShouldFailoverAfterProbe(vr.q, vr.line); shouldSwitch {
 				quotaHit = true
+				exhaustionKind = kind
 				quotaText = vr.line
-				verifiedQuota = vr.q
+				if vr.q != nil && vr.q.Error == "" {
+					verifiedQuota = vr.q
+				}
 				if cmd.Process != nil {
 					waitErr = killProcessGroupGraceful(cmd.Process.Pid, waitCh, 1500*time.Millisecond)
 				}
 				break loop
 			}
-			// Transient 429 while account still has quota -> DO NOT kill agy!
+			// Transient 429 while account still has both 5h & 7d quota -> DO NOT kill agy!
 		case <-ticker.C:
 			newOff, cID, aEm, qLine := ScanLog(logPath, logOffset)
 			logOffset = newOff
@@ -502,13 +541,13 @@ loop:
 				authEmail = aEm
 			}
 			// Only trigger live quota verification on genuine backend HTTP 429 ResourceExhausted
-			// (debounced to at most once every 20s)
-			if autoSwitch && acct != nil && qLine != "" && !verifying && time.Since(lastVerifyAt) >= 20*time.Second {
+			// (debounced to at most once every 25s)
+			if autoSwitch && acct != nil && qLine != "" && !verifying && time.Since(lastVerifyAt) >= 25*time.Second {
 				verifying = true
 				lastVerifyAt = time.Now()
 				capturedLine := qLine
 				go func() {
-					q := quota.ProbeAccount(acct, agyBin, 15*time.Second)
+					q := quota.ProbeAccount(acct, agyBin, 35*time.Second)
 					select {
 					case verifyCh <- verifyResult{q: q, line: capturedLine}:
 					default:
@@ -538,12 +577,13 @@ loop:
 	}
 
 	return &RunResult{
-		ReturnCode:    exitCodeOf(waitErr),
-		QuotaHit:      quotaHit && !terminatedBySig,
-		QuotaText:     quotaText,
-		VerifiedQuota: verifiedQuota,
-		ConvID:        convID,
-		AuthEmail:     authEmail,
+		ReturnCode:     exitCodeOf(waitErr),
+		QuotaHit:       quotaHit && !terminatedBySig,
+		ExhaustionKind: exhaustionKind,
+		QuotaText:      quotaText,
+		VerifiedQuota:  verifiedQuota,
+		ConvID:         convID,
+		AuthEmail:      authEmail,
 	}
 }
 
@@ -569,11 +609,15 @@ func RunPrintOnce(agyBin string, agyArgs []string, logPath string, acct *vault.A
 	suspected := qLine != "" || PrintModeQuotaRe.MatchString(combined)
 	var verifiedQuota *vault.Quota
 	confirmed := false
+	exhaustionKind := ""
 	if autoSwitch && suspected && acct != nil {
-		q := quota.ProbeAccount(acct, agyBin, 15*time.Second)
-		if IsQuotaTrulyExhausted(q) {
+		q := quota.ProbeAccount(acct, agyBin, 35*time.Second)
+		if ok, kind := ShouldFailoverAfterProbe(q, qLine); ok {
 			confirmed = true
-			verifiedQuota = q
+			exhaustionKind = kind
+			if q != nil && q.Error == "" {
+				verifiedQuota = q
+			}
 		}
 	}
 
@@ -582,13 +626,14 @@ func RunPrintOnce(agyBin string, agyArgs []string, logPath string, acct *vault.A
 		qText = combined
 	}
 	return &RunResult{
-		ReturnCode:    exitCodeOf(err),
-		Stdout:        stdout.String(),
-		Stderr:        stderr.String(),
-		QuotaHit:      confirmed,
-		QuotaText:     qText,
-		VerifiedQuota: verifiedQuota,
-		ConvID:        convID,
-		AuthEmail:     authEmail,
+		ReturnCode:     exitCodeOf(err),
+		Stdout:         stdout.String(),
+		Stderr:         stderr.String(),
+		QuotaHit:       confirmed,
+		ExhaustionKind: exhaustionKind,
+		QuotaText:      qText,
+		VerifiedQuota:  verifiedQuota,
+		ConvID:         convID,
+		AuthEmail:      authEmail,
 	}
 }

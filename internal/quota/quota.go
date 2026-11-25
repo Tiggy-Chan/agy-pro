@@ -14,7 +14,12 @@ import (
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
-var usageLineRe = regexp.MustCompile(`(?m)^Gemini Models\t(Weekly Limit Remaining|Five Hour Limit Remaining)\t(\d+(?:\.\d+)?)%\t(\S+)`)
+var (
+	// Non-TTY pipe output: "Gemini Models\tWeekly Limit Remaining\t0%\t2026-12-01T02:03:36Z"
+	usageTabRe = regexp.MustCompile(`(?m)^Gemini Models\t(Weekly Limit Remaining|Five Hour Limit Remaining)\t(\d+(?:\.\d+)?)%\t(\S+)`)
+	// Space-aligned fallback: "Gemini Models   Weekly Limit Remaining   0%   2026-12-01 10:03 CST"
+	usageSpaceRe = regexp.MustCompile(`(?m)^Gemini Models\s{2,}(Weekly Limit Remaining|Five Hour Limit Remaining)\s+(\d+(?:\.\d+)?)%\s+(.+?)\s*$`)
+)
 
 func fptr(v float64) *float64 { return &v }
 
@@ -69,7 +74,10 @@ func ProbeAccount(acct *vault.Account, agyBin string, timeout time.Duration) *va
 		return q
 	}
 
-	matches := usageLineRe.FindAllStringSubmatch(stdout.String(), -1)
+	matches := usageTabRe.FindAllStringSubmatch(stdout.String(), -1)
+	if len(matches) == 0 {
+		matches = usageSpaceRe.FindAllStringSubmatch(stdout.String(), -1)
+	}
 	for _, m := range matches {
 		kind := m[1]
 		rem, err := strconv.ParseFloat(m[2], 64)
@@ -80,7 +88,7 @@ func ProbeAccount(acct *vault.Account, agyBin string, timeout time.Duration) *va
 		if used < 0 {
 			used = 0
 		}
-		resetTS := vault.ParseISOTime(m[3])
+		resetTS := parseUsageResetTime(m[3])
 		if strings.Contains(kind, "Five Hour") {
 			q.H5Rem = fptr(rem)
 			q.H5Used = fptr(used)
@@ -96,6 +104,19 @@ func ProbeAccount(acct *vault.Account, agyBin string, timeout time.Duration) *va
 		q.Error = "未返回 Gemini 额度行"
 	}
 	return q
+}
+
+func parseUsageResetTime(raw string) float64 {
+	if ts := vault.ParseISOTime(raw); ts > 0 {
+		return ts
+	}
+	s := strings.TrimSpace(raw)
+	for _, layout := range []string{"2006-01-02 15:04 MST", "2006-01-02 15:04:05 MST", "2006-01-02 15:04"} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return float64(t.Unix())
+		}
+	}
+	return 0
 }
 
 func truncErr(s string) string {

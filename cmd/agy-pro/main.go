@@ -651,29 +651,35 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			return res.ReturnCode
 		}
 
-		// Verified quota exhaustion -> record exact Google reset time & advance drain account
+		// Verified quota exhaustion (7d OR 5h, or probe-timeout fallback) -> record exact reset & advance drain account
 		now = float64(time.Now().UnixNano()) / 1e9
-		resetSec := runner.ParseResetsIn(res.QuotaText)
+		resetSec := 1800 // conservative 30m fallback when live probe timed out
+		kindLabel := "额度耗尽"
+		cdReason := "quota exhausted"
 		if res.VerifiedQuota != nil {
 			st.Quotas[currentEmail] = res.VerifiedQuota
-			if res.VerifiedQuota.H5Rem != nil && *res.VerifiedQuota.H5Rem <= 0.5 && res.VerifiedQuota.H5Reset > now {
-				resetSec = int(res.VerifiedQuota.H5Reset - now)
-			} else if res.VerifiedQuota.D7Rem != nil && *res.VerifiedQuota.D7Rem <= 0.5 && res.VerifiedQuota.D7Reset > now {
-				resetSec = int(res.VerifiedQuota.D7Reset - now)
+			if res.ExhaustionKind == "7d" {
+				kindLabel = "7天额度耗尽"
+				cdReason = "7d quota exhausted"
+				if res.VerifiedQuota.D7Reset > now {
+					resetSec = int(res.VerifiedQuota.D7Reset - now)
+				} else {
+					resetSec = 3600
+				}
+			} else if res.ExhaustionKind == "5h" {
+				kindLabel = "5小时额度耗尽"
+				cdReason = "5h quota exhausted"
+				if res.VerifiedQuota.H5Reset > now {
+					resetSec = int(res.VerifiedQuota.H5Reset - now)
+				} else {
+					resetSec = 3600
+				}
 			}
 		} else {
-			h100, h0 := 100.0, 0.0
-			qEntry := st.Quotas[currentEmail]
-			if qEntry == nil {
-				qEntry = &vault.Quota{}
-				st.Quotas[currentEmail] = qEntry
-			}
-			qEntry.H5Used = &h100
-			qEntry.H5Rem = &h0
-			qEntry.H5Reset = now + float64(resetSec)
-			qEntry.At = now
+			kindLabel = "疑似额度耗尽（查额度超时，临时冷却）"
+			cdReason = "429 suspected quota (probe timeout)"
 		}
-		router.MarkCooldown(st, currentEmail, resetSec, "verified quota exhausted", now)
+		router.MarkCooldown(st, currentEmail, resetSec, cdReason, now)
 		_ = v.SaveState(st)
 		quotas = quota.Effective(st, now)
 
@@ -686,7 +692,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 
 		nextEmail, msg := router.PickDrain(order, st, quotas, true, now)
 		if nextEmail == "" || nextEmail == currentEmail {
-			fmt.Fprintf(os.Stderr, "\n\033[31m[agy-pro]\033[0m %s 撞 5h 墙，且无其他可用账号：%s\n", currentEmail, msg)
+			fmt.Fprintf(os.Stderr, "\n\033[31m[agy-pro]\033[0m %s %s，且无其他可用账号：%s\n", currentEmail, kindLabel, msg)
 			return 2
 		}
 		_ = v.SaveState(st)
@@ -695,8 +701,8 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		if convID != "" {
 			resumeNote = fmt.Sprintf(" 并续聊 %s", convID)
 		}
-		fmt.Fprintf(os.Stderr, "\n\033[33m[agy-pro]\033[0m %s 撞 5h 额度墙（约 %s 后重置），自动切号 -> \033[1m%s\033[0m%s\n",
-			currentEmail, vault.FmtDuration(float64(resetSec)), nextEmail, resumeNote)
+		fmt.Fprintf(os.Stderr, "\n\033[33m[agy-pro]\033[0m %s %s（约 %s 后重置），自动切号 -> \033[1m%s\033[0m%s\n",
+			currentEmail, kindLabel, vault.FmtDuration(float64(resetSec)), nextEmail, resumeNote)
 
 		currentEmail = nextEmail
 		if !printMode {
