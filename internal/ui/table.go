@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 )
@@ -16,19 +17,18 @@ const (
 	AlignRight
 )
 
-// Modern Linux terminals render East-Asian Ambiguous symbols (like ●, ○) as 1 cell
-// even under zh_CN.UTF-8, while true CJK ideographs (W/F) stay 2 cells.
 var widthCond = &runewidth.Condition{EastAsianWidth: false}
 
+// DisplayWidth returns the true visual cell width (ignoring ANSI escape codes).
 func DisplayWidth(s string) int {
-	return widthCond.StringWidth(s)
+	return lipgloss.Width(s)
 }
 
 func Truncate(s string, maxW int) string {
 	if maxW <= 0 {
 		return ""
 	}
-	if DisplayWidth(s) <= maxW {
+	if widthCond.StringWidth(s) <= maxW {
 		return s
 	}
 	if maxW == 1 {
@@ -38,15 +38,19 @@ func Truncate(s string, maxW int) string {
 }
 
 func Pad(s string, width int, align Align) string {
-	clipped := Truncate(s, width)
-	gap := width - DisplayWidth(clipped)
+	w := lipgloss.Width(s)
+	if w > width && !strings.Contains(s, "\x1b[") {
+		s = Truncate(s, width)
+		w = lipgloss.Width(s)
+	}
+	gap := width - w
 	if gap < 0 {
 		gap = 0
 	}
 	if align == AlignRight {
-		return strings.Repeat(" ", gap) + clipped
+		return strings.Repeat(" ", gap) + s
 	}
-	return clipped + strings.Repeat(" ", gap)
+	return s + strings.Repeat(" ", gap)
 }
 
 func TerminalColumns(defaultCols int) int {
@@ -58,7 +62,8 @@ func TerminalColumns(defaultCols int) int {
 	return defaultCols
 }
 
-// RenderTable renders a CJK-width-accurate table guaranteed never to exceed maxWidth.
+// RenderTable renders an ANSI-aware, CJK-width-accurate table with subtle Unicode hairlines,
+// guaranteed never to exceed maxWidth.
 func RenderTable(headers []string, rows [][]string, aligns []Align, maxWidth int, flexCol int) string {
 	ncols := len(headers)
 	if maxWidth <= 0 {
@@ -104,7 +109,6 @@ func RenderTable(headers []string, rows [][]string, aligns []Align, maxWidth int
 			minW[0] = widths[0]
 		}
 
-		// Shrink flexible column first
 		if can := widths[flexCol] - minW[flexCol]; can > 0 {
 			shrink := excess
 			if shrink > can {
@@ -114,7 +118,6 @@ func RenderTable(headers []string, rows [][]string, aligns []Align, maxWidth int
 			excess -= shrink
 		}
 
-		// Shrink widest remaining columns if still needed
 		for excess > 0 {
 			widest := -1
 			for i := 0; i < ncols; i++ {
@@ -130,16 +133,22 @@ func RenderTable(headers []string, rows [][]string, aligns []Align, maxWidth int
 		}
 	}
 
-	ruleW := sepTotal
-	for _, w := range widths {
-		ruleW += w
+	ruleW := maxWidth
+	if sumW := sepTotal + func() int {
+		s := 0
+		for _, w := range widths {
+			s += w
+		}
+		return s
+	}(); sumW > ruleW {
+		ruleW = sumW
 	}
 	if ruleW > maxWidth {
 		ruleW = maxWidth
 	}
-	rule := strings.Repeat("-", ruleW)
+	rule := Hairline(ruleW)
 
-	formatRow := func(cols []string) string {
+	formatRow := func(cols []string, header bool) string {
 		parts := make([]string, ncols)
 		for i := 0; i < ncols; i++ {
 			val := ""
@@ -150,23 +159,23 @@ func RenderTable(headers []string, rows [][]string, aligns []Align, maxWidth int
 			if i < len(aligns) {
 				al = aligns[i]
 			}
-			parts[i] = Pad(val, widths[i], al)
+			cell := Pad(val, widths[i], al)
+			if header && val != "" {
+				cell = SDim.Bold(true).Render(cell)
+			}
+			parts[i] = cell
 		}
 		return strings.TrimRight(strings.Join(parts, sep), " ")
 	}
 
 	var b strings.Builder
-	b.WriteString(rule)
-	b.WriteByte('\n')
-	b.WriteString(formatRow(headers))
+	b.WriteString(formatRow(headers, true))
 	b.WriteByte('\n')
 	b.WriteString(rule)
-	b.WriteByte('\n')
 	for _, r := range rows {
-		b.WriteString(formatRow(r))
 		b.WriteByte('\n')
+		b.WriteString(formatRow(r, false))
 	}
-	b.WriteString(rule)
 	return b.String()
 }
 
@@ -182,5 +191,5 @@ func StderrProgress(msg string, clear bool) {
 		return
 	}
 	cols := TerminalColumns(80)
-	_, _ = os.Stderr.WriteString("\r\x1b[2K" + Truncate(msg, cols-1))
+	_, _ = os.Stderr.WriteString("\r\x1b[2K" + SHeadDim.Render("⠋ ") + SDim.Render(Truncate(msg, cols-4)))
 }

@@ -28,6 +28,7 @@ make install   # 编译并安装单二进制至 ~/.local/bin/agy-pro
 
 ```bash
 agy-pro                         # 秒开原生 agy（尊重你的默认模型配置 + 撞 5h/7d 墙自动切号续跑）
+agy-pro ui                      # 打开交互式 BubbleTea 仪表盘（选号启动、实时刷新、调序、调水位线）
 agy-pro --dangerously-skip-permissions -r <ID> # 直接兼容并透传 agy 原生参数
 agy-pro status                  # <5ms 秒显看板（自适应 80 列终端，中文精准对齐）
 agy-pro status -r               # 联网刷新全部账号实时 5h/7d 额度（带逐号进度条）
