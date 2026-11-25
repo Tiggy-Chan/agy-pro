@@ -19,14 +19,29 @@ func AccountAvailability(email string, st *vault.State, quotas map[string]*vault
 		return false, fmt.Sprintf("冷却中 (%s)", vault.FmtDuration(cd.Until-now))
 	}
 	if q := quotas[email]; q != nil {
-		if q.H5Rem != nil && *q.H5Rem <= 0.5 {
-			return false, fmt.Sprintf("5h 已满 (%s)", vault.FmtLocalTime(q.H5Reset))
-		}
 		if q.D7Rem != nil && *q.D7Rem <= 0.5 {
 			return false, fmt.Sprintf("7d 已满 (%s)", vault.FmtLocalTime(q.D7Reset))
 		}
+		if q.H5Rem != nil && *q.H5Rem <= 0.5 {
+			return false, fmt.Sprintf("5h 已满 (%s)", vault.FmtLocalTime(q.H5Reset))
+		}
 	}
 	return true, "ok"
+}
+
+// AboveReserve reports whether an account has remaining Gemini 5h & 7d quota strictly above reservePct.
+// Unknown (uncached) quotas are optimistically treated as above reserve.
+func AboveReserve(q *vault.Quota, reservePct float64) bool {
+	if reservePct <= 0.5 || q == nil {
+		return true
+	}
+	if q.D7Rem != nil && *q.D7Rem <= reservePct {
+		return false
+	}
+	if q.H5Rem != nil && *q.H5Rem <= reservePct {
+		return false
+	}
+	return true
 }
 
 func MarkCooldown(st *vault.State, email string, seconds int, reason string, now float64) {
@@ -43,13 +58,48 @@ func MarkCooldown(st *vault.State, email string, seconds int, reason string, now
 	}
 }
 
-// PickDrain selects the account to run under strict drain semantics:
-// stays on active until exhausted/cooldown, then advances cyclically and stays there.
+// NextStandby returns the next available account after currentEmail in cyclic drain order.
+func NextStandby(order []string, currentEmail string, st *vault.State, quotas map[string]*vault.Quota, now float64) string {
+	idx := -1
+	for i, e := range order {
+		if e == currentEmail {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 || len(order) < 2 {
+		return ""
+	}
+	for step := 1; step < len(order); step++ {
+		e := order[(idx+step)%len(order)]
+		if ok, _ := AccountAvailability(e, st, quotas, now); ok {
+			return e
+		}
+	}
+	return ""
+}
+
+// PickDrain selects the account to run under strict drain semantics.
+// When reservePct > 0 (e.g. 10), if the current account's cached remaining quota is <= reservePct
+// AND another account has quota > reservePct, it proactively advances before starting a new task
+// to minimize mid-task quota walls. If all accounts are <= reservePct, it falls back cleanly to
+// any available account (> 0.5%).
 func PickDrain(
 	order []string,
 	st *vault.State,
 	quotas map[string]*vault.Quota,
 	forceNext bool,
+	now float64,
+) (string, string) {
+	return PickDrainWithReserve(order, st, quotas, forceNext, 0, now)
+}
+
+func PickDrainWithReserve(
+	order []string,
+	st *vault.State,
+	quotas map[string]*vault.Quota,
+	forceNext bool,
+	reservePct float64,
 	now float64,
 ) (string, string) {
 	PruneExpiredCooldowns(st, now)
@@ -67,13 +117,12 @@ func PickDrain(
 	}
 
 	if idx < 0 {
-		// First-time bootstrap: prefer partially-used account to finish draining it first
 		active = order[0]
 		idx = 0
 		for i, e := range order {
 			q := quotas[e]
 			if q != nil && q.D7Used != nil && *q.D7Used > 0 && *q.D7Used < 99.5 {
-				if ok, _ := AccountAvailability(e, st, quotas, now); ok {
+				if ok, _ := AccountAvailability(e, st, quotas, now); ok && AboveReserve(q, reservePct) {
 					active = e
 					idx = i
 					break
@@ -84,13 +133,40 @@ func PickDrain(
 
 	if !forceNext {
 		if ok, _ := AccountAvailability(active, st, quotas, now); ok {
+			if AboveReserve(quotas[active], reservePct) {
+				st.Active = active
+				st.Order = append([]string(nil), order...)
+				return active, "drain-current"
+			}
+			// Proactive low-quota switch: look for a fresher account strictly above reservePct
+			for step := 1; step < len(order); step++ {
+				e := order[(idx+step)%len(order)]
+				if ok2, _ := AccountAvailability(e, st, quotas, now); ok2 && AboveReserve(quotas[e], reservePct) {
+					st.Active = e
+					st.Order = append([]string(nil), order...)
+					return e, "reserve-advanced"
+				}
+			}
+			// No account above reservePct -> keep draining current available account
 			st.Active = active
 			st.Order = append([]string(nil), order...)
 			return active, "drain-current"
 		}
 	}
 
-	// Scan forward cyclically
+	// Prefer accounts above reservePct first when advancing
+	if reservePct > 0.5 {
+		for step := 1; step < len(order); step++ {
+			e := order[(idx+step)%len(order)]
+			if ok, _ := AccountAvailability(e, st, quotas, now); ok && AboveReserve(quotas[e], reservePct) {
+				st.Active = e
+				st.Order = append([]string(nil), order...)
+				return e, "drain-advanced"
+			}
+		}
+	}
+
+	// Fallback: any available account (> 0.5%)
 	for step := 1; step < len(order); step++ {
 		e := order[(idx+step)%len(order)]
 		if ok, _ := AccountAvailability(e, st, quotas, now); ok {

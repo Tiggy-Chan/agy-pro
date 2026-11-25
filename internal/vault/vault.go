@@ -49,16 +49,23 @@ type Quota struct {
 	D7Used  *float64 `json:"d7_used"`
 	D7Rem   *float64 `json:"d7_rem"`
 	D7Reset float64  `json:"d7_reset"`
+	C5Used  *float64 `json:"c5_used,omitempty"`
+	C5Rem   *float64 `json:"c5_rem,omitempty"`
+	C5Reset float64  `json:"c5_reset,omitempty"`
+	C7Used  *float64 `json:"c7_used,omitempty"`
+	C7Rem   *float64 `json:"c7_rem,omitempty"`
+	C7Reset float64  `json:"c7_reset,omitempty"`
 	At      float64  `json:"at"`
 	Error   string   `json:"error"`
 }
 
 type State struct {
-	Active    string               `json:"active"`
-	Order     []string             `json:"order"`
-	Cooldowns map[string]*Cooldown `json:"cooldowns"`
-	Quotas    map[string]*Quota    `json:"quotas"`
-	LastConv  map[string]string    `json:"last_conv"`
+	Active     string               `json:"active"`
+	Order      []string             `json:"order"`
+	ReservePct float64              `json:"reserve_pct,omitempty"`
+	Cooldowns  map[string]*Cooldown `json:"cooldowns"`
+	Quotas     map[string]*Quota    `json:"quotas"`
+	LastConv   map[string]string    `json:"last_conv"`
 }
 
 type TokenMeta struct {
@@ -380,6 +387,16 @@ func (v *Vault) SaveState(st *State) error {
 	}
 	raw = append(raw, '\n')
 	return AtomicWriteFile(v.StateFile, raw, 0o600)
+}
+
+// UpdateState atomically loads, mutates, and saves state.json under an exclusive flock,
+// preventing races between foreground sessions and detached background quota verifiers.
+func (v *Vault) UpdateState(fn func(st *State)) error {
+	return v.withLock(func() error {
+		st := v.LoadState()
+		fn(st)
+		return v.SaveState(st)
+	})
 }
 
 func (v *Vault) ListAccounts() map[string]*Account {

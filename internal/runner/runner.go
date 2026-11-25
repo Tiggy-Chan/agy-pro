@@ -74,7 +74,7 @@ type RunResult struct {
 	Stdout         string
 	Stderr         string
 	QuotaHit       bool
-	ExhaustionKind string // "7d", "5h", or "suspected"
+	ExhaustionKind string // "fast", "7d", "5h", "claude-7d", "claude-5h", or "suspected"
 	QuotaText      string
 	VerifiedQuota  *vault.Quota
 	ConvID         string
@@ -235,10 +235,10 @@ func BuildAgyArgs(baseArgs []string, logPath, resumeID, promptInteractive string
 	return append(args, baseArgs...)
 }
 
-// ExhaustionKind inspects a live quota probe result and returns:
-//   - "7d" if weekly remaining <= 0.5% (checked FIRST because 7d exhaustion blocks even when 5h > 0%!)
-//   - "5h" if 5-hour remaining <= 0.5%
-//   - ""   if account still has usable quota OR if probe errored/timed out
+// ExhaustionKind inspects a live quota probe result and returns the exhausted pool:
+//   - "7d" / "5h" for Gemini pool (checked 7d first because 7d blocks even when 5h > 0%!)
+//   - "claude-7d" / "claude-5h" for Claude & GPT pool
+//   - "" if all known pools still have > 0.5% remaining, or if probe errored/timed out
 func ExhaustionKind(q *vault.Quota) string {
 	if q == nil || q.Error != "" {
 		return ""
@@ -248,6 +248,12 @@ func ExhaustionKind(q *vault.Quota) string {
 	}
 	if q.H5Rem != nil && *q.H5Rem <= 0.5 {
 		return "5h"
+	}
+	if q.C7Rem != nil && *q.C7Rem <= 0.5 {
+		return "claude-7d"
+	}
+	if q.C5Rem != nil && *q.C5Rem <= 0.5 {
+		return "claude-5h"
 	}
 	return ""
 }
@@ -433,9 +439,11 @@ func RunInteractiveOnce(
 		terminatedBySig = false
 		verifying       = false
 		lastVerifyAt    time.Time
+		fatalDetectedAt time.Time
+		fatalLine       = ""
 	)
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(350 * time.Millisecond)
 	defer ticker.Stop()
 
 loop:
@@ -468,7 +476,22 @@ loop:
 			if aEm != "" {
 				authEmail = aEm
 			}
-			if autoSwitch && acct != nil && qLine != "" && !verifying && time.Since(lastVerifyAt) >= 25*time.Second {
+			// Fast path: agy logged a fatal turn-ending `agent executor error: ... (ResourceExhausted, HTTP 429)`
+			// AFTER exhausting all internal retries -> wait 1.0s for trajectory flush, then switch immediately
+			// (~1.5s total) while a detached background verifier fetches exact Google reset times!
+			if autoSwitch && qLine != "" && fatalDetectedAt.IsZero() && FatalTurnQuotaRe.MatchString(qLine) {
+				fatalDetectedAt = time.Now()
+				fatalLine = qLine
+			}
+			if !fatalDetectedAt.IsZero() && time.Since(fatalDetectedAt) >= 1000*time.Millisecond {
+				quotaHit = true
+				exhaustionKind = "fast"
+				quotaText = fatalLine
+				waitErr = stopChildGraceful(cmd.Process, waitCh, 1500*time.Millisecond)
+				break loop
+			}
+			// Non-fatal 429 path: verify live quota quietly without interrupting agy unless confirmed
+			if autoSwitch && acct != nil && qLine != "" && fatalDetectedAt.IsZero() && !verifying && time.Since(lastVerifyAt) >= 25*time.Second {
 				verifying = true
 				lastVerifyAt = time.Now()
 				capturedLine := qLine
