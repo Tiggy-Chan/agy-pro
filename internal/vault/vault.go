@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	Version      = "0.1.0-dev"
-	DefaultModel = "gemini-4-neon-xhigh"
+	Version = "0.1.0-dev"
 )
 
 var StripEnvKeys = []string{

@@ -34,11 +34,12 @@ var validSubcommands = []string{
 }
 
 func helpText() string {
-	return fmt.Sprintf(`agy-pro %s (Go) — 纯净零中转原生 agy 多账号号池（死锁 %s + drain 切号）
+	return fmt.Sprintf(`agy-pro %s (Go) — 官方 agy 零入侵原生多账号增强工具（drain 切号 + 撞墙自动续跑）
 
 用法:
-  agy-pro                        秒开原生 agy（默认按 drain 主号直连 Google，撞 5h 墙自动切号 --resume 续跑）
-  agy-pro run [选项] [-- agy参数] 显式启动并透传参数给原生 agy（如 agy-pro run -- --dangerously-skip-permissions）
+  agy-pro                        秒开原生 agy（默认按 drain 主号直连 Google，完全尊重 agy 原生模型与配置）
+  agy-pro [agy原生参数...]        直接兼容并透传 agy 参数（如 agy-pro --dangerously-skip-permissions -r <ID>）
+  agy-pro run [选项] [-- agy参数] 显式启动并透传参数给原生 agy
   agy-pro status [-r] [--active] 秒显号池看板（默认读缓存 <5ms 出表；加 -r 在线刷新，加 --active 仅刷新主号）
   agy-pro login                  调用官方 agy acp --login 登录新账号并存入独立号池
   agy-pro import <文件或目录>     导入已有 antigravity-oauth-token 到独立号池
@@ -52,9 +53,9 @@ func helpText() string {
 
 启动选项（可用于 agy-pro 或 agy-pro run）:
   --account <关键词>              临时指定账号
-  --no-auto-switch                关闭撞 5h 墙自动重启切号
+  --no-auto-switch                关闭撞 5h/7d 墙自动重启切号
   --refresh                       启动前先联网刷新当前账号额度
-`, vault.Version, vault.DefaultModel)
+`, vault.Version)
 }
 
 func matchEmail(order []string, needle string) (string, string) {
@@ -248,7 +249,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	if oldestAt > 0 {
 		ageTxt = vault.FmtAge(oldestAt, now)
 	}
-	fmt.Printf("agy-pro | %s | 原生直连 | drain | 缓存:%s\n", vault.DefaultModel, ageTxt)
+	fmt.Printf("agy-pro | 原生直连 | drain | 缓存:%s\n", ageTxt)
 	headers := []string{"", "账号", "5h已用", "7d已用", "状态"}
 	aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignLeft}
 	fmt.Println(ui.RenderTable(headers, rows, aligns, cols, 1))
@@ -461,7 +462,7 @@ func cmdDoctor(v *vault.Vault) int {
 		okAll = false
 	}
 	fmt.Printf("✓ 真实 HOME 保留: %s\n", homeVal)
-	fmt.Printf("✓ 强制模型锁: %s\n", vault.DefaultModel)
+	fmt.Println("✓ 模型配置: 遵循 agy 原生设置与 /model 切换（零强制覆盖）")
 	if okAll {
 		return 0
 	}
@@ -565,7 +566,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	}
 
 	printMode := isPrintModeArgs(agyArgs)
-	cleanArgs := runner.StripLockedArgs(agyArgs, false)
+	cleanArgs := runner.StripLogFileArg(agyArgs)
 	convID := runner.ExtractCLIConversationID(cleanArgs)
 
 	cwd, _ := os.Getwd()
@@ -612,17 +613,17 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 					d7Txt = fmt.Sprintf("7d=%.0f%%", *q.D7Used)
 				}
 			}
-			fmt.Fprintf(os.Stderr, "\033[36m[agy-pro]\033[0m 原生直连: \033[1m%s\033[0m (%s, %s) | %s\n",
-				currentEmail, h5Txt, d7Txt, vault.DefaultModel)
+			fmt.Fprintf(os.Stderr, "\033[36m[agy-pro]\033[0m 原生直连: \033[1m%s\033[0m (%s, %s)\n",
+				currentEmail, h5Txt, d7Txt)
 		}
 
 		logPath := filepath.Join(v.LogsDir, fmt.Sprintf("agy-pro-%d-%d-%d.log", time.Now().Unix(), os.Getpid(), attempt))
 		var fullArgs []string
 		if attempt == 0 && !opts.resumeLast {
-			fullArgs = runner.BuildAgyArgs(cleanArgs, logPath, vault.DefaultModel, "", "")
+			fullArgs = runner.BuildAgyArgs(cleanArgs, logPath, "", "")
 		} else {
 			relaunchBase := runner.StripResumeAndPromptArgs(cleanArgs)
-			fullArgs = runner.BuildAgyArgs(relaunchBase, logPath, vault.DefaultModel, convID, promptInteractive)
+			fullArgs = runner.BuildAgyArgs(relaunchBase, logPath, convID, promptInteractive)
 		}
 
 		var res *runner.RunResult

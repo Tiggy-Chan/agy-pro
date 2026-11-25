@@ -2,7 +2,6 @@ package runner
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -140,7 +139,9 @@ func StripResumeAndPromptArgs(args []string) []string {
 	return out
 }
 
-func StripLockedArgs(args []string, allowModelOverride bool) []string {
+// StripLogFileArg removes only --log-file so agy-pro can attach its own session log.
+// All user model, effort, settings, mode, and permission flags pass through verbatim to native agy.
+func StripLogFileArg(args []string) []string {
 	out := make([]string, 0, len(args))
 	skip := false
 	for _, a := range args {
@@ -148,11 +149,11 @@ func StripLockedArgs(args []string, allowModelOverride bool) []string {
 			skip = false
 			continue
 		}
-		if a == "--log-file" || (!allowModelOverride && a == "--model") {
+		if a == "--log-file" {
 			skip = true
 			continue
 		}
-		if strings.HasPrefix(a, "--log-file=") || (!allowModelOverride && strings.HasPrefix(a, "--model=")) {
+		if strings.HasPrefix(a, "--log-file=") {
 			continue
 		}
 		out = append(out, a)
@@ -219,14 +220,10 @@ func FindNewestConversationSince(start time.Time) string {
 	return bestID
 }
 
-func BuildAgyArgs(baseArgs []string, logPath, model, resumeID, promptInteractive string) []string {
-	settingsBytes, _ := json.Marshal(map[string]string{
-		"modelProvider": "",
-		"model":         model,
-	})
+// BuildAgyArgs constructs official `agy` CLI flags with zero intrusion into model/settings:
+// user flags (including --model, --effort, --settings, /model in TUI) are respected natively.
+func BuildAgyArgs(baseArgs []string, logPath, resumeID, promptInteractive string) []string {
 	args := []string{
-		"--settings", string(settingsBytes),
-		"--model", model,
 		"--log-file", logPath,
 	}
 	if resumeID != "" {

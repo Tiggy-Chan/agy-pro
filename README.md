@@ -8,8 +8,7 @@
 
 - **极速单文件二进制**：Go 静态编译单二进制落盘至 `~/.local/bin/agy-pro`，本地命令（`status`/`use`/`next`）`< 5ms` 瞬出，常驻内存仅 ~4MB。
 - **零外部代理依赖**：独立号池仓库位于 `~/.local/state/agy-pro/`（`0700`/`0600` 权限），内置 `login`/`import`/`remove`/`order`，彻底独立运行。
-- **100% 原生直连 Google**：直接拉起官方 `agy` 二进制，剥离所有代理/网关环境变量，保留真实 `$HOME`，无双层系统提示词、无工具串行套娃。
-- **模型死锁**：全程锁定 `gemini-4-neon-xhigh`。
+- **100% 零入侵原生直连**：直接拉起官方 `agy` 二进制，不强行锁死模型、不覆盖 `--settings`，完全尊重你的 `agy` 原生配置与对话内 `/model` 切换；保留真实 `$HOME`，官方升级新模型或新交互特性时自动兼容、永不失配。
 - **严格 `drain` 切号**：单号死磕直到 5h（或 7d）耗尽，顺延切到下个账号且不回跳。
 - **零误判撞墙检测**：绝不盲扫 PTY 终端屏幕文本；仅监听 `agy` 后端结构化 429 日志并在切号前强制实时核验剩余额度（`<= 0.5%`），杜绝历史会话回放或临时 429 误杀健康账号。
 - **零 PTY 中间层（零渲染干涉）**：交互会话采用原生 TTY 直通（`stdin/stdout/stderr` 直接继承，不套二层 PTY 转发），渲染与快捷键行为和官方原生 `agy` 100% 一致；所有后台额度查询严格 `Setsid + Stdin=/dev/null` 脱离 `/dev/tty`；切号/强制终止时由 `TerminalGuard` 无条件恢复 `termios` 并复位 Kitty Keyboard Protocol (`\x1b[<u`) / `modifyOtherKeys` / Bracketed Paste / Mouse Tracking。
@@ -27,8 +26,8 @@ make install   # 编译并安装单二进制至 ~/.local/bin/agy-pro
 ## 常用命令
 
 ```bash
-agy-pro                         # 秒开原生 agy（gemini-4-neon-xhigh + 撞墙自动切号续跑）
-agy-pro run -- --dangerously-skip-permissions  # 透传参数给原生 agy
+agy-pro                         # 秒开原生 agy（尊重你的默认模型配置 + 撞 5h/7d 墙自动切号续跑）
+agy-pro --dangerously-skip-permissions -r <ID> # 直接兼容并透传 agy 原生参数
 agy-pro status                  # <5ms 秒显看板（自适应 80 列终端，中文精准对齐）
 agy-pro status -r               # 联网刷新全部账号实时 5h/7d 额度（带逐号进度条）
 agy-pro status -r --active      # 仅联网刷新当前主号额度

@@ -121,9 +121,18 @@ func TestParsersAndVault(t *testing.T) {
 	if ok, kind := runner.ShouldFailoverAfterProbe(&vault.Quota{Error: "超时 (35s)"}, realBackendLine); !ok || kind != "suspected" {
 		t.Fatalf("fatal 429 with probe timeout MUST fallback failover as suspected, got ok=%v kind=%q", ok, kind)
 	}
-	stripped := runner.StripLockedArgs([]string{"--model", "flash", "-r", "abc"}, false)
-	if len(stripped) != 2 || stripped[0] != "-r" || stripped[1] != "abc" {
+	// StripLogFileArg removes only --log-file and preserves user's --model and other native agy flags
+	stripped := runner.StripLogFileArg([]string{"--model", "flash", "--log-file", "/tmp/old.log", "-r", "abc"})
+	if len(stripped) != 4 || stripped[0] != "--model" || stripped[1] != "flash" || stripped[2] != "-r" || stripped[3] != "abc" {
 		t.Fatalf("unexpected stripped args: %v", stripped)
+	}
+
+	// BuildAgyArgs must NEVER inject hardcoded --model or --settings overrides (zero intrusion)
+	built := runner.BuildAgyArgs([]string{"--dangerously-skip-permissions"}, "/tmp/a.log", "cid-1", "cont")
+	for _, a := range built {
+		if a == "--model" || strings.HasPrefix(a, "--model=") || a == "--settings" || strings.HasPrefix(a, "--settings=") {
+			t.Fatalf("BuildAgyArgs must not inject --model/--settings overrides: %v", built)
+		}
 	}
 
 	tmp := t.TempDir()
