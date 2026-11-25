@@ -15,8 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/creack/pty"
-	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
@@ -53,7 +51,6 @@ var (
 	authEmailRe  = regexp.MustCompile(`applyAuthResult:\s+email=([^\s,]+)`)
 
 	// BackendLogQuotaRe matches ONLY genuine agy Go backend RPC quota errors in --log-file.
-	// It NEVER matches user messages, assistant text, tool output, or RerenderAll scrollback!
 	// Covers both 5-hour AND 7-day exhaustion (including G1 AI credits balance fallback errors).
 	BackendLogQuotaRe = regexp.MustCompile(
 		`(?i)errorreport\.go:\d+\].*(?:ResourceExhausted,\s*HTTP\s*429|RESOURCE_EXHAUSTED\s*\(code\s*429\)|Individual quota reached|AI credits balance is too low|insufficient.*credits)`,
@@ -258,8 +255,7 @@ func ExhaustionKind(q *vault.Quota) string {
 	return ""
 }
 
-// IsQuotaTrulyExhausted checks a live quota probe result: returns true when
-// Google confirms either 7d remaining <= 0.5% OR 5h remaining <= 0.5%.
+// IsQuotaTrulyExhausted returns true when Google confirms either 7d <= 0.5% or 5h <= 0.5%.
 func IsQuotaTrulyExhausted(q *vault.Quota) bool {
 	return ExhaustionKind(q) != ""
 }
@@ -274,7 +270,6 @@ func ShouldFailoverAfterProbe(q *vault.Quota, backendLine string) (bool, string)
 		return true, kind
 	}
 	if q != nil && q.Error == "" && q.H5Rem != nil && q.D7Rem != nil {
-		// Live probe succeeded and proved BOTH 5h and 7d still have remaining quota -> transient blip
 		return false, ""
 	}
 	if FatalTurnQuotaRe.MatchString(backendLine) {
@@ -283,26 +278,46 @@ func ShouldFailoverAfterProbe(q *vault.Quota, backendLine string) (bool, string)
 	return false, ""
 }
 
-// TerminalGuard saves and unconditionally restores raw termios AND modern terminal modes.
+// TerminalGuard saves baseline termios before starting child agy and guarantees
+// termios + modern keyboard/mouse protocols are cleanly restored if child is killed.
 type TerminalGuard struct {
 	stdinFd  int
-	stdoutFd int
+	stdout   *os.File
 	isTTY    bool
 	mu       sync.Mutex
 	saved    *term.State
 	restored bool
 }
 
-func NewTerminalGuard(stdinFd, stdoutFd int) *TerminalGuard {
+func NewTerminalGuard(stdinFd int, stdout *os.File) *TerminalGuard {
+	outFd := int(stdout.Fd())
 	return &TerminalGuard{
-		stdinFd:  stdinFd,
-		stdoutFd: stdoutFd,
-		isTTY:    term.IsTerminal(stdinFd) && term.IsTerminal(stdoutFd),
+		stdinFd: stdinFd,
+		stdout:  stdout,
+		isTTY:   term.IsTerminal(stdinFd) && term.IsTerminal(outFd),
 	}
 }
 
 func (g *TerminalGuard) IsTTY() bool { return g.isTTY }
 
+// Save snapshots baseline termios WITHOUT switching the terminal into raw mode
+// (letting child agy own raw mode directly with zero middleman interference).
+func (g *TerminalGuard) Save() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.isTTY {
+		return nil
+	}
+	st, err := term.GetState(g.stdinFd)
+	if err != nil {
+		return err
+	}
+	g.saved = st
+	g.restored = false
+	return nil
+}
+
+// EnterRaw is kept for testing raw-mode restoration.
 func (g *TerminalGuard) EnterRaw() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -329,16 +344,20 @@ func (g *TerminalGuard) Restore() {
 		_ = term.Restore(g.stdinFd, g.saved)
 		g.saved = nil
 	}
-	_, _ = unix.Write(g.stdoutFd, TerminalResetSeq)
+	// Use os.File.Write (handles EINTR & short writes properly, unlike raw unix.Write)
+	_, _ = g.stdout.Write(TerminalResetSeq)
 }
 
-func killProcessGroupGraceful(pid int, waitCh <-chan error, grace time.Duration) error {
-	_ = syscall.Kill(-pid, syscall.SIGTERM)
+func stopChildGraceful(proc *os.Process, waitCh <-chan error, grace time.Duration) error {
+	if proc == nil {
+		return nil
+	}
+	_ = proc.Signal(syscall.SIGTERM)
 	select {
 	case err := <-waitCh:
 		return err
 	case <-time.After(grace):
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
+		_ = proc.Kill()
 		return <-waitCh
 	}
 }
@@ -354,15 +373,15 @@ func exitCodeOf(err error) int {
 	return 1
 }
 
-// RunInteractiveOnce executes `agy` inside a full-fidelity PTY.
+// RunInteractiveOnce launches `agy` directly on the user's real TTY (os.Stdin/Stdout/Stderr)
+// with ZERO PTY proxy layer!
 //
-// Zero-false-positive quota detection:
-//   1. NEVER inspects PTY stdout for quota strings (immune to historical conversation
-//      redraws, user-pasted error text, or tool output).
-//   2. Watches ONLY structured Go backend HTTP 429 ResourceExhausted lines in --log-file.
-//   3. Before killing agy or blacklisting the account, verifies live quota via an
-//      isolated `quota.ProbeAccount` call; transient 429s when quota remains > 0.5%
-//      NEVER kill the session or cool down healthy accounts.
+// Why direct TTY inheritance:
+//   - Zero double-PTY buffering or EINTR/short-write frame drops (eliminates TUI ghosting/duplication).
+//   - Zero SIGWINCH forwarding lag (kernel delivers window resizes directly to agy).
+//   - 100% byte-identical rendering to launching official `agy` directly.
+//   - agy-pro passively tails --log-file in the background for verified 5h/7d exhaustion,
+//     and TerminalGuard guarantees clean termios + Kitty/modifyOtherKeys reset on forced failover/SIGTERM.
 func RunInteractiveOnce(
 	agyBin string,
 	agyArgs []string,
@@ -373,111 +392,28 @@ func RunInteractiveOnce(
 ) *RunResult {
 	startTime := time.Now()
 	stdinFd := int(os.Stdin.Fd())
-	stdoutFd := int(os.Stdout.Fd())
 
-	guard := NewTerminalGuard(stdinFd, stdoutFd)
-	_ = guard.EnterRaw()
+	guard := NewTerminalGuard(stdinFd, os.Stdout)
+	_ = guard.Save()
 	defer guard.Restore()
 
 	cmd := exec.Command(agyBin, agyArgs...)
 	cmd.Env = vault.CleanNativeEnv("")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
-	var winSize *pty.Winsize
-	if guard.IsTTY() {
-		if ws, err := pty.GetsizeFull(os.Stdin); err == nil {
-			winSize = ws
-		}
-	}
-
-	ptmx, err := pty.StartWithSize(cmd, winSize)
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		return &RunResult{ReturnCode: 1, Stderr: err.Error()}
 	}
-	defer ptmx.Close()
 
-	winchCh := make(chan os.Signal, 2)
-	if guard.IsTTY() {
-		signal.Notify(winchCh, syscall.SIGWINCH)
-		defer signal.Stop(winchCh)
-		go func() {
-			for range winchCh {
-				_ = pty.InheritSize(os.Stdin, ptmx)
-				if cmd.Process != nil {
-					_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGWINCH)
-				}
-			}
-		}()
-	}
+	// Let foreground child `agy` handle Ctrl+C (SIGINT) directly without killing agy-pro.
+	signal.Ignore(syscall.SIGINT)
+	defer signal.Reset(syscall.SIGINT)
 
 	stopSigCh := make(chan os.Signal, 2)
 	signal.Notify(stopSigCh, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(stopSigCh)
-
-	stopIO := make(chan struct{})
-	var ioWG sync.WaitGroup
-
-	// Stdin -> PTY (cancellable via unix.Poll)
-	if guard.IsTTY() {
-		ioWG.Add(1)
-		go func() {
-			defer ioWG.Done()
-			buf := make([]byte, 4096)
-			pollFds := []unix.PollFd{{Fd: int32(stdinFd), Events: unix.POLLIN}}
-			for {
-				select {
-				case <-stopIO:
-					return
-				default:
-				}
-				nReady, err := unix.Poll(pollFds, 80)
-				if err != nil {
-					if errors.Is(err, syscall.EINTR) {
-						continue
-					}
-					return
-				}
-				if nReady <= 0 {
-					continue
-				}
-				if pollFds[0].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0 {
-					return
-				}
-				if pollFds[0].Revents&unix.POLLIN != 0 {
-					n, rerr := unix.Read(stdinFd, buf)
-					if n > 0 {
-						if _, werr := ptmx.Write(buf[:n]); werr != nil {
-							return
-						}
-					}
-					if rerr != nil {
-						if errors.Is(rerr, syscall.EINTR) {
-							continue
-						}
-						return
-					}
-					if n == 0 {
-						return
-					}
-				}
-			}
-		}()
-	}
-
-	// PTY -> Stdout transparent passthrough (ZERO regex scanning on terminal text!)
-	ptyDone := make(chan struct{})
-	go func() {
-		defer close(ptyDone)
-		buf := make([]byte, 8192)
-		for {
-			n, rerr := ptmx.Read(buf)
-			if n > 0 {
-				_, _ = unix.Write(stdoutFd, buf[:n])
-			}
-			if rerr != nil {
-				return
-			}
-		}
-	}()
 
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
@@ -512,9 +448,7 @@ loop:
 			break loop
 		case <-stopSigCh:
 			terminatedBySig = true
-			if cmd.Process != nil {
-				waitErr = killProcessGroupGraceful(cmd.Process.Pid, waitCh, 1500*time.Millisecond)
-			}
+			waitErr = stopChildGraceful(cmd.Process, waitCh, 1500*time.Millisecond)
 			break loop
 		case vr := <-verifyCh:
 			verifying = false
@@ -525,12 +459,9 @@ loop:
 				if vr.q != nil && vr.q.Error == "" {
 					verifiedQuota = vr.q
 				}
-				if cmd.Process != nil {
-					waitErr = killProcessGroupGraceful(cmd.Process.Pid, waitCh, 1500*time.Millisecond)
-				}
+				waitErr = stopChildGraceful(cmd.Process, waitCh, 1500*time.Millisecond)
 				break loop
 			}
-			// Transient 429 while account still has both 5h & 7d quota -> DO NOT kill agy!
 		case <-ticker.C:
 			newOff, cID, aEm, qLine := ScanLog(logPath, logOffset)
 			logOffset = newOff
@@ -540,8 +471,6 @@ loop:
 			if aEm != "" {
 				authEmail = aEm
 			}
-			// Only trigger live quota verification on genuine backend HTTP 429 ResourceExhausted
-			// (debounced to at most once every 25s)
 			if autoSwitch && acct != nil && qLine != "" && !verifying && time.Since(lastVerifyAt) >= 25*time.Second {
 				verifying = true
 				lastVerifyAt = time.Now()
@@ -557,12 +486,6 @@ loop:
 		}
 	}
 
-	close(stopIO)
-	ioWG.Wait()
-	select {
-	case <-ptyDone:
-	case <-time.After(150 * time.Millisecond):
-	}
 	guard.Restore()
 
 	_, cID, aEm, _ := ScanLog(logPath, logOffset)

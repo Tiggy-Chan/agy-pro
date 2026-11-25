@@ -12,7 +12,7 @@
 - **模型死锁**：全程锁定 `gemini-4-neon-xhigh`。
 - **严格 `drain` 切号**：单号死磕直到 5h（或 7d）耗尽，顺延切到下个账号且不回跳。
 - **零误判撞墙检测**：绝不盲扫 PTY 终端屏幕文本；仅监听 `agy` 后端结构化 429 日志并在切号前强制实时核验剩余额度（`<= 0.5%`），杜绝历史会话回放或临时 429 误杀健康账号。
-- **防终端卡死**：所有后台查询严格 `Setsid + Stdin=/dev/null` 脱离 `/dev/tty`；交互 PTY 通过 `TerminalGuard` 无条件恢复 `termios` 并复位 Kitty Keyboard Protocol (`\x1b[<u`) / `modifyOtherKeys` / Bracketed Paste / Mouse Tracking。
+- **零 PTY 中间层（零渲染干涉）**：交互会话采用原生 TTY 直通（`stdin/stdout/stderr` 直接继承，不套二层 PTY 转发），渲染与快捷键行为和官方原生 `agy` 100% 一致；所有后台额度查询严格 `Setsid + Stdin=/dev/null` 脱离 `/dev/tty`；切号/强制终止时由 `TerminalGuard` 无条件恢复 `termios` 并复位 Kitty Keyboard Protocol (`\x1b[<u`) / `modifyOtherKeys` / Bracketed Paste / Mouse Tracking。
 - **自动续跑**：撞 5h 墙确认后自动切号，静默预刷新过期 token，并用原生 `agy --resume <id> --prompt-interactive` 续接完整上下文。
 
 ## 安装与编译

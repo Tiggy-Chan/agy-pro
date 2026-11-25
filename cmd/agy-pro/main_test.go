@@ -181,7 +181,7 @@ func TestTerminalGuardRestoresTermiosAndResetSeq(t *testing.T) {
 		t.Fatalf("TCGETS before failed: %v", err)
 	}
 
-	g := runner.NewTerminalGuard(sfd, sfd)
+	g := runner.NewTerminalGuard(sfd, ttyFile)
 	if err := g.EnterRaw(); err != nil {
 		t.Fatalf("EnterRaw failed: %v", err)
 	}
