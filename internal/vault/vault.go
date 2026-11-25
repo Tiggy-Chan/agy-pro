@@ -99,9 +99,9 @@ func ConversationsDir() string {
 
 func DefaultStateDir() string {
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "agy-pool")
+		return filepath.Join(xdg, "agy-pro")
 	}
-	return filepath.Join(HomeDir(), ".local", "state", "agy-pool")
+	return filepath.Join(HomeDir(), ".local", "state", "agy-pro")
 }
 
 func New(stateDir string) *Vault {
@@ -118,7 +118,7 @@ func New(stateDir string) *Vault {
 }
 
 func FindAgyBinary() string {
-	if ov := os.Getenv("AGY_POOL_BIN"); ov != "" {
+	if ov := os.Getenv("AGY_PRO_BIN"); ov != "" {
 		if info, err := os.Stat(ov); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
 			return ov
 		}
@@ -607,7 +607,7 @@ func (v *Vault) PruneLogs(keep int) {
 	}
 	var logs []item
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasPrefix(e.Name(), "agy-pool-") || !strings.HasSuffix(e.Name(), ".log") {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "agy-pro-") || !strings.HasSuffix(e.Name(), ".log") {
 			continue
 		}
 		var mt int64

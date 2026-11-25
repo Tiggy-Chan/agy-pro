@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"agy-pool/internal/quota"
-	"agy-pool/internal/router"
-	"agy-pool/internal/runner"
-	"agy-pool/internal/ui"
-	"agy-pool/internal/vault"
+	"github.com/Tiggy-Chan/agy-pro/internal/quota"
+	"github.com/Tiggy-Chan/agy-pro/internal/router"
+	"github.com/Tiggy-Chan/agy-pro/internal/runner"
+	"github.com/Tiggy-Chan/agy-pro/internal/ui"
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 var validSubcommands = []string{
@@ -34,23 +34,23 @@ var validSubcommands = []string{
 }
 
 func helpText() string {
-	return fmt.Sprintf(`agy-pool %s (Go) — 纯净零中转原生 agy 多账号号池（死锁 %s + drain 切号）
+	return fmt.Sprintf(`agy-pro %s (Go) — 纯净零中转原生 agy 多账号号池（死锁 %s + drain 切号）
 
 用法:
-  agy-pool                        秒开原生 agy（默认按 drain 主号直连 Google，撞 5h 墙自动切号 --resume 续跑）
-  agy-pool run [选项] [-- agy参数] 显式启动并透传参数给原生 agy（如 agy-pool run -- --dangerously-skip-permissions）
-  agy-pool status [-r] [--active] 秒显号池看板（默认读缓存 <5ms 出表；加 -r 在线刷新，加 --active 仅刷新主号）
-  agy-pool login                  调用官方 agy acp --login 登录新账号并存入独立号池
-  agy-pool import <文件或目录>     导入已有 antigravity-oauth-token 到独立号池
-  agy-pool remove <关键词|邮箱>    从号池移除指定账号
-  agy-pool use <关键词|邮箱>       手动指定当前 drain 主号（如: agy-pool use 003）
-  agy-pool next [--resume]        切到下一个可用账号（带 --resume 直接续聊当前目录上次会话）
-  agy-pool resume [会话ID]        用当前主号续聊当前目录最近一次（或指定）会话
-  agy-pool order <号1> <号2> ...  自定义 drain 轮换顺序（支持邮箱关键字）
-  agy-pool clear-cooldown         清空本地冷却记录
-  agy-pool doctor                 环境与号池体检
+  agy-pro                        秒开原生 agy（默认按 drain 主号直连 Google，撞 5h 墙自动切号 --resume 续跑）
+  agy-pro run [选项] [-- agy参数] 显式启动并透传参数给原生 agy（如 agy-pro run -- --dangerously-skip-permissions）
+  agy-pro status [-r] [--active] 秒显号池看板（默认读缓存 <5ms 出表；加 -r 在线刷新，加 --active 仅刷新主号）
+  agy-pro login                  调用官方 agy acp --login 登录新账号并存入独立号池
+  agy-pro import <文件或目录>     导入已有 antigravity-oauth-token 到独立号池
+  agy-pro remove <关键词|邮箱>    从号池移除指定账号
+  agy-pro use <关键词|邮箱>       手动指定当前 drain 主号（如: agy-pro use 003）
+  agy-pro next [--resume]        切到下一个可用账号（带 --resume 直接续聊当前目录上次会话）
+  agy-pro resume [会话ID]        用当前主号续聊当前目录最近一次（或指定）会话
+  agy-pro order <号1> <号2> ...  自定义 drain 轮换顺序（支持邮箱关键字）
+  agy-pro clear-cooldown         清空本地冷却记录
+  agy-pro doctor                 环境与号池体检
 
-启动选项（可用于 agy-pool 或 agy-pool run）:
+启动选项（可用于 agy-pro 或 agy-pro run）:
   --account <关键词>              临时指定账号
   --no-auto-switch                关闭撞 5h 墙自动重启切号
   --refresh                       启动前先联网刷新当前账号额度
@@ -96,7 +96,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 		case "--json":
 			asJSON = true
 		case "-h", "--help":
-			fmt.Println("用法: agy-pool status [-r|--refresh] [--active] [--no-auto-init] [--json]")
+			fmt.Println("用法: agy-pro status [-r|--refresh] [--active] [--no-auto-init] [--json]")
 			return 0
 		default:
 			fmt.Fprintf(os.Stderr, "未知选项: %s\n", a)
@@ -108,7 +108,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	st := v.LoadState()
 	order := v.OrderedEmails(accounts, st)
 	if len(order) == 0 {
-		fmt.Println("号池为空。请运行 `agy-pool login` 登录账号，或 `agy-pool import <目录>` 导入已有 token。")
+		fmt.Println("号池为空。请运行 `agy-pro login` 登录账号，或 `agy-pro import <目录>` 导入已有 token。")
 		return 1
 	}
 
@@ -248,7 +248,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	if oldestAt > 0 {
 		ageTxt = vault.FmtAge(oldestAt, now)
 	}
-	fmt.Printf("agy-pool | %s | 原生直连 | drain | 缓存:%s\n", vault.DefaultModel, ageTxt)
+	fmt.Printf("agy-pro | %s | 原生直连 | drain | 缓存:%s\n", vault.DefaultModel, ageTxt)
 	headers := []string{"", "账号", "5h已用", "7d已用", "状态"}
 	aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignLeft}
 	fmt.Println(ui.RenderTable(headers, rows, aligns, cols, 1))
@@ -257,14 +257,14 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	lastConv := st.LastConv[cwd]
 	var hints []string
 	if !needRefresh {
-		hints = append(hints, "刷新实时额度: agy-pool status -r")
+		hints = append(hints, "刷新实时额度: agy-pro status -r")
 	}
 	if lastConv != "" {
 		shortID := lastConv
 		if len(shortID) > 8 {
 			shortID = shortID[:8]
 		}
-		hints = append(hints, fmt.Sprintf("续聊上次会话: agy-pool resume (%s)", shortID))
+		hints = append(hints, fmt.Sprintf("续聊上次会话: agy-pro resume (%s)", shortID))
 	}
 	if len(hints) > 0 {
 		fmt.Println(ui.Truncate(strings.Join(hints, " | "), cols))
@@ -286,7 +286,7 @@ func cmdLogin(v *vault.Vault) int {
 
 func cmdImport(v *vault.Vault, args []string) int {
 	if len(args) != 1 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "用法: agy-pool import <token文件或目录>")
+		fmt.Fprintln(os.Stderr, "用法: agy-pro import <token文件或目录>")
 		return 2
 	}
 	p := args[0]
@@ -326,7 +326,7 @@ func cmdImport(v *vault.Vault, args []string) int {
 
 func cmdRemove(v *vault.Vault, args []string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "用法: agy-pool remove <关键词|邮箱>")
+		fmt.Fprintln(os.Stderr, "用法: agy-pro remove <关键词|邮箱>")
 		return 2
 	}
 	accounts := v.ListAccounts()
@@ -344,7 +344,7 @@ func cmdRemove(v *vault.Vault, args []string) int {
 
 func cmdUse(v *vault.Vault, args []string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "用法: agy-pool use <关键词|邮箱>")
+		fmt.Fprintln(os.Stderr, "用法: agy-pro use <关键词|邮箱>")
 		return 2
 	}
 	accounts := v.ListAccounts()
@@ -402,7 +402,7 @@ func cmdOrder(v *vault.Vault, args []string) int {
 
 func cmdDoctor(v *vault.Vault) int {
 	agyBin := vault.FindAgyBinary()
-	fmt.Printf("=== agy-pool %s (Go) 体检（纯原生独立模式）===\n", vault.Version)
+	fmt.Printf("=== agy-pro %s (Go) 体检（纯原生独立模式）===\n", vault.Version)
 	okAll := true
 
 	if info, err := os.Stat(agyBin); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
@@ -516,7 +516,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	st := v.LoadState()
 	order := v.OrderedEmails(accounts, st)
 	if len(order) == 0 {
-		fmt.Fprintln(os.Stderr, "错误: 独立号池为空。请先运行 `agy-pool login` 或 `agy-pool import <目录>`。")
+		fmt.Fprintln(os.Stderr, "错误: 独立号池为空。请先运行 `agy-pro login` 或 `agy-pro import <目录>`。")
 		return 1
 	}
 
@@ -538,7 +538,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	} else {
 		picked, reason := router.PickDrain(order, st, quotas, opts.forceNext, now)
 		if picked == "" {
-			fmt.Fprintf(os.Stderr, "[agy-pool] %s\n", reason)
+			fmt.Fprintf(os.Stderr, "[agy-pro] %s\n", reason)
 			return 2
 		}
 		currentEmail = picked
@@ -546,7 +546,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	}
 
 	if opts.refreshBefore {
-		ui.StderrProgress(fmt.Sprintf("[agy-pool] 正在刷新 %s 额度...", currentEmail), false)
+		ui.StderrProgress(fmt.Sprintf("[agy-pro] 正在刷新 %s 额度...", currentEmail), false)
 		q := quota.ProbeAccount(accounts[currentEmail], agyBin, 20*time.Second)
 		ui.StderrProgress("", true)
 		st.Quotas[currentEmail] = q
@@ -556,7 +556,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		if opts.explicitAccount == "" {
 			picked, reason := router.PickDrain(order, st, quotas, false, now)
 			if picked == "" {
-				fmt.Fprintf(os.Stderr, "[agy-pool] %s\n", reason)
+				fmt.Fprintf(os.Stderr, "[agy-pro] %s\n", reason)
 				return 2
 			}
 			currentEmail = picked
@@ -574,7 +574,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			convID = saved
 			cleanArgs = runner.StripResumeAndPromptArgs(cleanArgs)
 		} else {
-			fmt.Fprintln(os.Stderr, "[agy-pool] 当前目录无最近会话记录，将开启新会话。")
+			fmt.Fprintln(os.Stderr, "[agy-pro] 当前目录无最近会话记录，将开启新会话。")
 		}
 	}
 
@@ -591,14 +591,14 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		// authenticated (expired=false) and never flashes a "Sign in" screen.
 		if !printMode {
 			if meta, err := vault.ReadTokenMeta(acct.TokenFile); err == nil && meta.Expiry > 0 && meta.Expiry <= float64(time.Now().Unix())+60 {
-				ui.StderrProgress(fmt.Sprintf("[agy-pool] 静默刷新 %s 登录态...", currentEmail), false)
+				ui.StderrProgress(fmt.Sprintf("[agy-pro] 静默刷新 %s 登录态...", currentEmail), false)
 				_ = quota.ProbeAccount(acct, agyBin, 15*time.Second)
 				ui.StderrProgress("", true)
 			}
 		}
 
 		if err := v.ActivateToken(acct); err != nil {
-			fmt.Fprintf(os.Stderr, "[agy-pool] 切换 token 失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[agy-pro] 切换 token 失败: %v\n", err)
 			return 1
 		}
 
@@ -612,11 +612,11 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 					d7Txt = fmt.Sprintf("7d=%.0f%%", *q.D7Used)
 				}
 			}
-			fmt.Fprintf(os.Stderr, "\033[36m[agy-pool]\033[0m 原生直连: \033[1m%s\033[0m (%s, %s) | %s\n",
+			fmt.Fprintf(os.Stderr, "\033[36m[agy-pro]\033[0m 原生直连: \033[1m%s\033[0m (%s, %s) | %s\n",
 				currentEmail, h5Txt, d7Txt, vault.DefaultModel)
 		}
 
-		logPath := filepath.Join(v.LogsDir, fmt.Sprintf("agy-pool-%d-%d-%d.log", time.Now().Unix(), os.Getpid(), attempt))
+		logPath := filepath.Join(v.LogsDir, fmt.Sprintf("agy-pro-%d-%d-%d.log", time.Now().Unix(), os.Getpid(), attempt))
 		var fullArgs []string
 		if attempt == 0 && !opts.resumeLast {
 			fullArgs = runner.BuildAgyArgs(cleanArgs, logPath, vault.DefaultModel, "", "")
@@ -686,7 +686,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 
 		nextEmail, msg := router.PickDrain(order, st, quotas, true, now)
 		if nextEmail == "" || nextEmail == currentEmail {
-			fmt.Fprintf(os.Stderr, "\n\033[31m[agy-pool]\033[0m %s 撞 5h 墙，且无其他可用账号：%s\n", currentEmail, msg)
+			fmt.Fprintf(os.Stderr, "\n\033[31m[agy-pro]\033[0m %s 撞 5h 墙，且无其他可用账号：%s\n", currentEmail, msg)
 			return 2
 		}
 		_ = v.SaveState(st)
@@ -695,7 +695,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		if convID != "" {
 			resumeNote = fmt.Sprintf(" 并续聊 %s", convID)
 		}
-		fmt.Fprintf(os.Stderr, "\n\033[33m[agy-pool]\033[0m %s 撞 5h 额度墙（约 %s 后重置），自动切号 -> \033[1m%s\033[0m%s\n",
+		fmt.Fprintf(os.Stderr, "\n\033[33m[agy-pro]\033[0m %s 撞 5h 额度墙（约 %s 后重置），自动切号 -> \033[1m%s\033[0m%s\n",
 			currentEmail, vault.FmtDuration(float64(resetSec)), nextEmail, resumeNote)
 
 		currentEmail = nextEmail
@@ -720,7 +720,7 @@ func runCLI(argv []string, stateDir string) int {
 		fmt.Print(helpText())
 		return 0
 	case "-V", "--version":
-		fmt.Printf("agy-pool %s\n", vault.Version)
+		fmt.Printf("agy-pro %s\n", vault.Version)
 		return 0
 	case "status":
 		return cmdStatus(v, rest)
@@ -743,7 +743,7 @@ func runCLI(argv []string, stateDir string) int {
 			}
 		}
 		_ = v.SaveState(st)
-		fmt.Println("✓ 已清空所有账号的本地冷却与耗尽缓存（可运行 agy-pool status -r 重新拉取实时额度）。")
+		fmt.Println("✓ 已清空所有账号的本地冷却与耗尽缓存（可运行 agy-pro status -r 重新拉取实时额度）。")
 		return 0
 	case "doctor":
 		return cmdDoctor(v)
@@ -774,7 +774,7 @@ func runCLI(argv []string, stateDir string) int {
 		}
 		nxt, msg := router.PickDrain(order, st, quotas, true, now)
 		if nxt == "" {
-			fmt.Fprintf(os.Stderr, "[agy-pool] %s\n", msg)
+			fmt.Fprintf(os.Stderr, "[agy-pro] %s\n", msg)
 			return 2
 		}
 		_ = v.SaveState(st)
@@ -796,7 +796,7 @@ func runCLI(argv []string, stateDir string) int {
 	// Reject unknown bare subcommands instead of launching interactive TUI on typos
 	if !strings.HasPrefix(cmd, "-") {
 		sort.Strings(validSubcommands)
-		fmt.Fprintf(os.Stderr, "未知子命令: '%s'\n可用子命令: %s\n如需把参数直接传给 agy，请用: agy-pool run -- %s ...\n",
+		fmt.Fprintf(os.Stderr, "未知子命令: '%s'\n可用子命令: %s\n如需把参数直接传给 agy，请用: agy-pro run -- %s ...\n",
 			cmd, strings.Join(validSubcommands, ", "), cmd)
 		return 2
 	}

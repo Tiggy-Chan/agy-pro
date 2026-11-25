@@ -3,7 +3,7 @@ package router
 import (
 	"fmt"
 
-	"agy-pool/internal/vault"
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 func PruneExpiredCooldowns(st *vault.State, now float64) {
@@ -54,7 +54,7 @@ func PickDrain(
 ) (string, string) {
 	PruneExpiredCooldowns(st, now)
 	if len(order) == 0 {
-		return "", "号池为空，请先运行 `agy-pool login` 登录账号，或 `agy-pool import <目录>` 导入。"
+		return "", "号池为空，请先运行 `agy-pro login` 登录账号，或 `agy-pro import <目录>` 导入。"
 	}
 
 	active := st.Active

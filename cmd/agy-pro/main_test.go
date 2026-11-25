@@ -12,11 +12,11 @@ import (
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
 
-	"agy-pool/internal/quota"
-	"agy-pool/internal/router"
-	"agy-pool/internal/runner"
-	"agy-pool/internal/ui"
-	"agy-pool/internal/vault"
+	"github.com/Tiggy-Chan/agy-pro/internal/quota"
+	"github.com/Tiggy-Chan/agy-pro/internal/router"
+	"github.com/Tiggy-Chan/agy-pro/internal/runner"
+	"github.com/Tiggy-Chan/agy-pro/internal/ui"
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 func fptr(v float64) *float64 { return &v }

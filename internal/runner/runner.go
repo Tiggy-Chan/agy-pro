@@ -19,8 +19,8 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
-	"agy-pool/internal/quota"
-	"agy-pool/internal/vault"
+	"github.com/Tiggy-Chan/agy-pro/internal/quota"
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 // TerminalResetSeq resets modern terminal protocols enabled by agy on startup:
@@ -39,7 +39,7 @@ var TerminalResetSeq = []byte(
 		"\x1b[0m",
 )
 
-const ResumeContinuePrompt = "刚刚因上一个账号 5 小时额度耗尽，agy-pool 已自动切换到新账号并恢复当前会话。请先核对刚才中断前的进展与本地文件状态，然后直接继续完成未完成的任务。"
+const ResumeContinuePrompt = "刚刚因上一个账号 5 小时额度耗尽，agy-pro 已自动切换到新账号并恢复当前会话。请先核对刚才中断前的进展与本地文件状态，然后直接继续完成未完成的任务。"
 
 const uuidPat = `([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`
 

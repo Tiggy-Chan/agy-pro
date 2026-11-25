@@ -1,10 +1,10 @@
-BINARY := agy-pool
+BINARY := agy-pro
 INSTALL_DIR := $(HOME)/.local/bin
 
 .PHONY: build install test clean
 
 build:
-	go build -ldflags="-s -w" -o $(BINARY) ./cmd/agy-pool
+	go build -ldflags="-s -w" -o $(BINARY) ./cmd/agy-pro
 
 install: build
 	mkdir -p $(INSTALL_DIR)

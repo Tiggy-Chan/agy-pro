@@ -1,4 +1,4 @@
-module agy-pool
+module github.com/Tiggy-Chan/agy-pro
 
 go 1.26.0
 

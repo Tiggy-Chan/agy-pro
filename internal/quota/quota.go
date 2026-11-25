@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"agy-pool/internal/vault"
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 var usageLineRe = regexp.MustCompile(`(?m)^Gemini Models\t(Weekly Limit Remaining|Five Hour Limit Remaining)\t(\d+(?:\.\d+)?)%\t(\S+)`)
