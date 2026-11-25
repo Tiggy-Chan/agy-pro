@@ -1,0 +1,13 @@
+# Compiled binary
+/agy-pool
+/agy-pro
+*.exe
+*.out
+
+# Runtime state, logs, and credentials (never commit)
+*.log
+*.token
+antigravity-oauth-token
+state.json
+.env
+.env.*
