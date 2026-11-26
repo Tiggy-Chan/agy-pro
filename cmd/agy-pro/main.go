@@ -56,14 +56,14 @@ func renderHelp() string {
 	b.WriteString(cmdLine("agy-pro ui", "打开交互式 TUI 仪表盘（aliases: dash, tui）"))
 	b.WriteString(cmdLine("agy-pro status [-r]", "查看号池双池看板（加 -r 在线刷新全部，--active 仅刷主号）"))
 	b.WriteString(cmdLine("agy-pro resume [会话ID]", "用当前主号续聊当前目录最近一次（或指定）会话"))
-	b.WriteString(cmdLine("agy-pro next [--resume]", "切到下一个可用账号（加 --resume 直接续聊）"))
+	b.WriteString(cmdLine("agy-pro next [agy参数...]", "切到下一个可用账号；带参数时直接按新号启动 agy（兼容 -c/--conversation 等）"))
 	b.WriteString(cmdLine("agy-pro run [选项] -- ...", "显式透传参数给原生 agy"))
 	b.WriteString("\n")
 
 	b.WriteString(ui.SHead.Render("号池管理") + "\n")
 	b.WriteString(cmdLine("agy-pro login", "调用官方 agy acp --login 登录新账号并存入独立号池"))
 	b.WriteString(cmdLine("agy-pro import <路径>", "导入已有 antigravity-oauth-token 文件或目录"))
-	b.WriteString(cmdLine("agy-pro use <关键词>", "手动指定当前 drain 主号（支持邮箱子串）"))
+	b.WriteString(cmdLine("agy-pro use <号> [agy参数]", "指定当前 drain 主号；带参数时直接按该号启动 agy"))
 	b.WriteString(cmdLine("agy-pro order <号1> ...", "自定义 drain 轮换顺序"))
 	b.WriteString(cmdLine("agy-pro remove <关键词>", "从号池移除指定账号"))
 	b.WriteString(cmdLine("agy-pro config reserve <N>", "设置低余量提前切号水位线（0–50，单位 %）"))
@@ -201,9 +201,7 @@ func applyVerifiedQuota(st *vault.State, email string, q *vault.Quota, now float
 
 	kind := runner.ExhaustionKind(q)
 	if kind == "" {
-		if cd := st.Cooldowns[email]; cd != nil && strings.Contains(cd.Reason, "verifying") {
-			delete(st.Cooldowns, email)
-		}
+		router.ReconcileCooldownWithQuota(st, email, q)
 		return "cleared-transient"
 	}
 
@@ -269,6 +267,7 @@ func cmdInternalWarm(v *vault.Vault, args []string) int {
 	if q != nil && q.Error == "" {
 		_ = v.UpdateState(func(st *vault.State) {
 			st.Quotas[email] = mergeQuotaResult(st.Quotas[email], q)
+			router.ReconcileCooldownWithQuota(st, email, q)
 		})
 	}
 	return 0
@@ -369,6 +368,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 		_ = v.UpdateState(func(s *vault.State) {
 			for e, q := range fresh {
 				s.Quotas[e] = mergeQuotaResult(s.Quotas[e], q)
+				router.ReconcileCooldownWithQuota(s, e, q)
 			}
 		})
 		st = v.LoadState()
@@ -689,9 +689,14 @@ func cmdRemove(v *vault.Vault, args []string) int {
 }
 
 func cmdUse(v *vault.Vault, args []string) int {
-	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "用法: agy-pro use <关键词|邮箱>")
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+		fmt.Fprintln(os.Stderr, "用法: agy-pro use <关键词|邮箱> [agy原生参数...]")
 		return 2
+	}
+	if len(args) > 1 {
+		opts, pass := parseRunFlags(args[1:])
+		opts.explicitAccount = args[0]
+		return cmdRun(v, pass, opts)
 	}
 	accounts := v.ListAccounts()
 	st := v.LoadState()
@@ -988,7 +993,14 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			return 2
 		}
 		currentEmail = picked
-		if reason == "reserve-advanced" && oldActive != "" && oldActive != currentEmail {
+		if opts.forceNext && oldActive != "" && oldActive != currentEmail {
+			fmt.Fprintf(os.Stderr, "%s %s %s %s %s\n",
+				ui.Brand("agy-pro"),
+				ui.SDim.Render("·"),
+				ui.SDim.Render(oldActive),
+				ui.SAccentB.Render("→"),
+				ui.SGoodB.Render(currentEmail))
+		} else if reason == "reserve-advanced" && oldActive != "" && oldActive != currentEmail {
 			fmt.Fprintf(os.Stderr, "%s %s %s %s %s\n",
 				ui.Brand("agy-pro"),
 				ui.SDim.Render("·"),
@@ -1008,6 +1020,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		ui.StderrProgress("", true)
 		_ = v.UpdateState(func(s *vault.State) {
 			s.Quotas[currentEmail] = mergeQuotaResult(s.Quotas[currentEmail], q)
+			router.ReconcileCooldownWithQuota(s, currentEmail, q)
 		})
 		st = v.LoadState()
 		now = float64(time.Now().UnixNano()) / 1e9
@@ -1057,6 +1070,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 				if qWarm != nil && qWarm.Error == "" {
 					_ = v.UpdateState(func(s *vault.State) {
 						s.Quotas[currentEmail] = mergeQuotaResult(s.Quotas[currentEmail], qWarm)
+						router.ReconcileCooldownWithQuota(s, currentEmail, qWarm)
 					})
 					st = v.LoadState()
 					quotas = quota.Effective(st, float64(time.Now().UnixNano())/1e9)
@@ -1251,6 +1265,42 @@ func shouldQuietFirstRun(argv []string) bool {
 	return false
 }
 
+// parseNextArgs parses arguments after `agy-pro next`.
+//   - No args -> switch active account only (launch=false).
+//   - Any args -> switch to next account AND launch native `agy` passing all native flags verbatim
+//     (e.g. `agy-pro next --dangerously-skip-permissions`, `agy-pro next -c`, `agy-pro next --conversation=<id>`).
+//   - Bare `--resume` or `-r` with no following conversation ID -> keeps shorthand `resumeLast=true`.
+func parseNextArgs(rest []string) (runOptions, []string, bool) {
+	if len(rest) == 0 {
+		return runOptions{}, nil, false
+	}
+	resumeLast := false
+	cleaned := make([]string, 0, len(rest))
+	for i := 0; i < len(rest); i++ {
+		a := rest[i]
+		if a == "--" {
+			cleaned = append(cleaned, rest[i:]...)
+			break
+		}
+		if a == "--resume" || a == "-r" {
+			// Bare `--resume` / `-r` (no following value, or followed by another flag) -> resumeLast shorthand.
+			// If followed by a conversation ID (non-flag), preserve both tokens for native agy!
+			if i+1 >= len(rest) || strings.HasPrefix(rest[i+1], "-") {
+				resumeLast = true
+				continue
+			}
+			cleaned = append(cleaned, a, rest[i+1])
+			i++
+			continue
+		}
+		cleaned = append(cleaned, a)
+	}
+	opts, pass := parseRunFlags(cleaned)
+	opts.forceNext = true
+	opts.resumeLast = resumeLast
+	return opts, pass, true
+}
+
 func isKnownSubcommand(s string) bool {
 	for _, c := range validSubcommands {
 		if c == s {
@@ -1347,19 +1397,11 @@ func runCLI(argv []string, stateDir string) int {
 	case "doctor":
 		return cmdDoctor(v)
 	case "next":
-		doResume := false
-		var rem []string
-		for _, a := range rest {
-			if a == "--resume" || a == "-r" {
-				doResume = true
-			} else {
-				rem = append(rem, a)
-			}
+		if len(rest) == 1 && (rest[0] == "-h" || rest[0] == "--help") {
+			fmt.Println("用法: agy-pro next [agy原生参数...]\n  不带参数时仅切到下一个可用主号；带任意参数时直接切号并透传启动 agy（如 agy-pro next --dangerously-skip-permissions 或 agy-pro next -c）。")
+			return 0
 		}
-		if doResume {
-			opts, pass := parseRunFlags(rem)
-			opts.forceNext = true
-			opts.resumeLast = true
+		if opts, pass, launch := parseNextArgs(rest); launch {
 			return cmdRun(v, pass, opts)
 		}
 		accounts := v.ListAccounts()

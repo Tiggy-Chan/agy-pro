@@ -127,13 +127,16 @@ func ProbeAccount(acct *vault.Account, agyBin string, timeout time.Duration) *va
 }
 
 func parseUsageResetTime(raw string) float64 {
-	if ts := vault.ParseISOTime(raw); ts > 0 {
+	if ts := vault.ParseISOTime(raw); ts > 86400 {
 		return ts
 	}
 	s := strings.TrimSpace(raw)
 	for _, layout := range []string{"2006-01-02 15:04 MST", "2006-01-02 15:04:05 MST", "2006-01-02 15:04"} {
 		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
-			return float64(t.Unix())
+			if t.Unix() > 86400 {
+				return float64(t.Unix())
+			}
+			return 0
 		}
 	}
 	return 0

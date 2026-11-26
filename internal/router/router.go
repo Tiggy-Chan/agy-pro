@@ -58,6 +58,34 @@ func MarkCooldown(st *vault.State, email string, seconds int, reason string, now
 	}
 }
 
+// ReconcileCooldownWithQuota clears any stale cooldown for email when a live quota
+// probe confirms the account actually has usable quota again (e.g. Google reset early).
+func ReconcileCooldownWithQuota(st *vault.State, email string, q *vault.Quota) bool {
+	if st == nil || q == nil || q.Error != "" {
+		return false
+	}
+	if st.Cooldowns[email] == nil {
+		return false
+	}
+	if q.H5Rem == nil && q.D7Rem == nil {
+		return false
+	}
+	if q.D7Rem != nil && *q.D7Rem <= 0.5 {
+		return false
+	}
+	if q.H5Rem != nil && *q.H5Rem <= 0.5 {
+		return false
+	}
+	if q.C7Rem != nil && *q.C7Rem <= 0.5 {
+		return false
+	}
+	if q.C5Rem != nil && *q.C5Rem <= 0.5 {
+		return false
+	}
+	delete(st.Cooldowns, email)
+	return true
+}
+
 // NextStandby returns the next available account after currentEmail in cyclic drain order.
 func NextStandby(order []string, currentEmail string, st *vault.State, quotas map[string]*vault.Quota, now float64) string {
 	idx := -1

@@ -36,8 +36,8 @@ agy-pro status -r               # 联网刷新全部账号实时 5h/7d 额度（
 agy-pro status -r --active      # 仅联网刷新当前主号额度
 agy-pro login                   # 调用官方 `agy acp --login` 登录新 Google 账号进独立号池
 agy-pro import <文件或目录>      # 导入已有 antigravity-oauth-token 到独立号池
-agy-pro use <关键词>             # 手动切换当前主号（如 agy-pro use alice）
-agy-pro next [--resume]         # 切到下个可用账号（加 --resume 续聊上次会话）
+agy-pro use <关键词> [agy参数]  # 切换当前主号（带参数时直接按该号启动 agy）
+agy-pro next [agy参数...]       # 切到下个可用账号（带参数时直接按新号启动 agy，兼容 --dangerously-skip-permissions / -c / --conversation）
 agy-pro resume [会话ID]         # 续聊当前目录最近一次（或指定）会话
 agy-pro order <号1> <号2> ...   # 自定义 drain 轮换顺序
 agy-pro config [reserve <0-50>]       # 设置低余量提前切号水位线（如 reserve 10）

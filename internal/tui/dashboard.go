@@ -33,21 +33,30 @@ type probeDoneMsg struct {
 	q     *vault.Quota
 }
 
+type autoRefreshStartMsg struct{}
+
+const (
+	autoRefreshStaleAge  = 180.0 // auto-refresh cached rows older than 3m when opening `agy-pro ui`
+	maxConcurrentProbes  = 3
+)
+
 type model struct {
-	vault      *vault.Vault
-	agyBin     string
-	accounts   map[string]*vault.Account
-	state      *vault.State
-	order      []string
-	quotas     map[string]*vault.Quota
-	cursor     int
-	width      int
-	height     int
-	spinner    spinner.Model
-	refreshing map[string]bool
-	toast      string
-	toastStyle lipgloss.Style
-	result     Result
+	vault         *vault.Vault
+	agyBin        string
+	accounts      map[string]*vault.Account
+	state         *vault.State
+	order         []string
+	quotas        map[string]*vault.Quota
+	cursor        int
+	width         int
+	height        int
+	spinner       spinner.Model
+	refreshing    map[string]bool
+	refreshQueue  []string
+	autoRefreshOn bool
+	toast         string
+	toastStyle    lipgloss.Style
+	result        Result
 }
 
 func newModel(v *vault.Vault, agyBin string) model {
@@ -56,13 +65,14 @@ func newModel(v *vault.Vault, agyBin string) model {
 	sp.Style = ui.SAccentB
 
 	m := model{
-		vault:      v,
-		agyBin:     agyBin,
-		spinner:    sp,
-		refreshing: map[string]bool{},
-		width:      ui.TerminalColumns(100),
-		height:     24,
-		toastStyle: ui.SDim,
+		vault:         v,
+		agyBin:        agyBin,
+		spinner:       sp,
+		refreshing:    map[string]bool{},
+		autoRefreshOn: true,
+		width:         ui.TerminalColumns(100),
+		height:        24,
+		toastStyle:    ui.SDim,
 	}
 	m.reload()
 	for i, e := range m.order {
@@ -72,6 +82,62 @@ func newModel(v *vault.Vault, agyBin string) model {
 		}
 	}
 	return m
+}
+
+func (m *model) needsAutoRefresh(email string, now float64) bool {
+	q := m.quotas[email]
+	if q == nil || q.At <= 0 || q.Error != "" {
+		return true
+	}
+	if now-q.At > autoRefreshStaleAge {
+		return true
+	}
+	// Also re-check accounts marked exhausted/cooling so early official resets clear automatically
+	if ok, _ := router.AccountAvailability(email, m.state, m.quotas, now); !ok && now-q.At > 60 {
+		return true
+	}
+	return false
+}
+
+func (m *model) enqueueProbes(emails []string) []tea.Cmd {
+	for _, e := range emails {
+		if m.refreshing[e] || m.accounts[e] == nil {
+			continue
+		}
+		queued := false
+		for _, q := range m.refreshQueue {
+			if q == e {
+				queued = true
+				break
+			}
+		}
+		if !queued {
+			m.refreshQueue = append(m.refreshQueue, e)
+		}
+	}
+	return m.drainRefreshQueue()
+}
+
+func (m *model) drainRefreshQueue() []tea.Cmd {
+	var cmds []tea.Cmd
+	for len(m.refreshing) < maxConcurrentProbes && len(m.refreshQueue) > 0 {
+		e := m.refreshQueue[0]
+		m.refreshQueue = m.refreshQueue[1:]
+		if m.refreshing[e] {
+			continue
+		}
+		acct := m.accounts[e]
+		if acct == nil {
+			continue
+		}
+		m.refreshing[e] = true
+		cmds = append(cmds, probeCmd(acct, m.agyBin))
+	}
+	return cmds
+}
+
+func (m *model) pendingRefreshCount() int {
+	return len(m.refreshing) + len(m.refreshQueue)
 }
 
 func (m *model) reload() {
@@ -90,6 +156,12 @@ func (m *model) reload() {
 }
 
 func (m model) Init() tea.Cmd {
+	if m.autoRefreshOn && len(m.order) > 0 {
+		return tea.Batch(
+			m.spinner.Tick,
+			func() tea.Msg { return autoRefreshStartMsg{} },
+		)
+	}
 	return m.spinner.Tick
 }
 
@@ -126,23 +198,51 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case autoRefreshStartMsg:
+		if !m.autoRefreshOn || len(m.order) == 0 {
+			return m, nil
+		}
+		now := float64(time.Now().UnixNano()) / 1e9
+		var stale []string
+		for _, e := range m.order {
+			if m.needsAutoRefresh(e, now) {
+				stale = append(stale, e)
+			}
+		}
+		if cmds := m.enqueueProbes(stale); len(cmds) > 0 {
+			m.toast = fmt.Sprintf("正在后台核对 %d 个账号实时额度...", m.pendingRefreshCount())
+			m.toastStyle = ui.SHeadDim
+			return m, tea.Batch(cmds...)
+		}
+		return m, nil
+
 	case probeDoneMsg:
 		delete(m.refreshing, msg.email)
+		clearedCooldown := false
 		_ = m.vault.UpdateState(func(s *vault.State) {
 			s.Quotas[msg.email] = mergeQuota(s.Quotas[msg.email], msg.q)
+			clearedCooldown = router.ReconcileCooldownWithQuota(s, msg.email, msg.q)
 		})
 		m.reload()
-		if len(m.refreshing) == 0 {
+		nextCmds := m.drainRefreshQueue()
+		rem := m.pendingRefreshCount()
+		if rem == 0 {
 			if msg.q != nil && msg.q.Error != "" {
 				m.toast = fmt.Sprintf("! %s: %s", msg.email, msg.q.Error)
 				m.toastStyle = ui.SAmber
+			} else if clearedCooldown {
+				m.toast = fmt.Sprintf("✓ %s 额度已恢复（自动清除旧冷却）", msg.email)
+				m.toastStyle = ui.SGood
 			} else {
 				m.toast = "✓ 额度已刷新"
 				m.toastStyle = ui.SGood
 			}
 		} else {
-			m.toast = fmt.Sprintf("正在刷新额度（剩余 %d 个）...", len(m.refreshing))
+			m.toast = fmt.Sprintf("正在刷新实时额度（剩余 %d 个）...", rem)
 			m.toastStyle = ui.SHeadDim
+		}
+		if len(nextCmds) > 0 {
+			return m, tea.Batch(nextCmds...)
 		}
 		return m, nil
 
@@ -221,18 +321,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.order) == 0 {
 				return m, nil
 			}
-			var cmds []tea.Cmd
-			for _, e := range m.order {
-				if m.refreshing[e] {
-					continue
-				}
-				if acct := m.accounts[e]; acct != nil {
-					m.refreshing[e] = true
-					cmds = append(cmds, probeCmd(acct, m.agyBin))
-				}
-			}
+			cmds := m.enqueueProbes(m.order)
 			if len(cmds) > 0 {
-				m.toast = fmt.Sprintf("正在并发刷新 %d 个账号实时额度...", len(cmds))
+				m.toast = fmt.Sprintf("正在刷新 %d 个账号实时额度...", m.pendingRefreshCount())
 				m.toastStyle = ui.SHeadDim
 				return m, tea.Batch(cmds...)
 			}
@@ -241,11 +332,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "R":
 			if len(m.order) > 0 {
 				e := m.order[m.cursor]
-				if acct := m.accounts[e]; acct != nil && !m.refreshing[e] {
-					m.refreshing[e] = true
+				cmds := m.enqueueProbes([]string{e})
+				if len(cmds) > 0 {
 					m.toast = fmt.Sprintf("正在刷新 %s 实时额度...", e)
 					m.toastStyle = ui.SHeadDim
-					return m, probeCmd(acct, m.agyBin)
+					return m, tea.Batch(cmds...)
 				}
 			}
 			return m, nil

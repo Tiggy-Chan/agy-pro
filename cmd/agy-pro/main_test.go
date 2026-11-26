@@ -239,6 +239,97 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	}
 }
 
+func TestNextAndUsePassthrough(t *testing.T) {
+	// 1. Bare `next` switches only (no launch)
+	if _, _, launch := parseNextArgs(nil); launch {
+		t.Fatal("expected bare next not to launch")
+	}
+
+	// 2. `next --dangerously-skip-permissions` -> forceNext + launch with flag verbatim
+	opts, pass, launch := parseNextArgs([]string{"--dangerously-skip-permissions"})
+	if !launch || !opts.forceNext || opts.resumeLast || len(pass) != 1 || pass[0] != "--dangerously-skip-permissions" {
+		t.Fatalf("unexpected next --dangerously-skip-permissions: opts=%+v pass=%v launch=%v", opts, pass, launch)
+	}
+
+	// 3. `next -c --dangerously-skip-permissions` -> native -c preserved verbatim
+	opts, pass, launch = parseNextArgs([]string{"-c", "--dangerously-skip-permissions"})
+	if !launch || !opts.forceNext || opts.resumeLast || strings.Join(pass, " ") != "-c --dangerously-skip-permissions" {
+		t.Fatalf("unexpected next -c: opts=%+v pass=%v launch=%v", opts, pass, launch)
+	}
+
+	// 4. `next --conversation=cid-99 --dangerously-skip-permissions` -> preserved verbatim
+	opts, pass, launch = parseNextArgs([]string{"--conversation=cid-99", "--dangerously-skip-permissions"})
+	if !launch || !opts.forceNext || opts.resumeLast || strings.Join(pass, " ") != "--conversation=cid-99 --dangerously-skip-permissions" {
+		t.Fatalf("unexpected next --conversation: opts=%+v pass=%v launch=%v", opts, pass, launch)
+	}
+
+	// 5. `next --resume cid-42 --dangerously-skip-permissions` -> explicit ID preserved verbatim
+	opts, pass, launch = parseNextArgs([]string{"--resume", "cid-42", "--dangerously-skip-permissions"})
+	if !launch || !opts.forceNext || opts.resumeLast || strings.Join(pass, " ") != "--resume cid-42 --dangerously-skip-permissions" {
+		t.Fatalf("unexpected next --resume cid-42: opts=%+v pass=%v launch=%v", opts, pass, launch)
+	}
+
+	// 6. Bare `next --resume` (no ID) -> resumeLast=true shorthand
+	opts, pass, launch = parseNextArgs([]string{"--resume", "--dangerously-skip-permissions"})
+	if !launch || !opts.forceNext || !opts.resumeLast || strings.Join(pass, " ") != "--dangerously-skip-permissions" {
+		t.Fatalf("unexpected bare next --resume: opts=%+v pass=%v launch=%v", opts, pass, launch)
+	}
+
+	// 7. End-to-end mock agy execution: verify `agy-pro next --dangerously-skip-permissions`
+	// advances active account alice -> bob and forwards `--dangerously-skip-permissions` verbatim!
+	tmp := t.TempDir()
+	fakeHome := filepath.Join(tmp, "home")
+	_ = os.MkdirAll(fakeHome, 0o700)
+	t.Setenv("HOME", fakeHome)
+	poolDir := filepath.Join(tmp, "pool")
+	v := vault.New(poolDir)
+	for _, em := range []string{"alice@example.com", "bob@example.com"} {
+		tf := filepath.Join(tmp, em+".tok")
+		raw, _ := json.Marshal(map[string]any{
+			"id_token_email": em,
+			"token":          map[string]any{"access_token": "a", "refresh_token": "r", "expiry": "2030-01-01T00:00:00Z"},
+		})
+		_ = os.WriteFile(tf, raw, 0o600)
+		if _, err := v.ImportTokenFile(tf); err != nil {
+			t.Fatalf("import %s failed: %v", em, err)
+		}
+	}
+	_ = v.UpdateState(func(s *vault.State) { s.Active = "alice@example.com" })
+
+	argsOut := filepath.Join(tmp, "captured_args.txt")
+	mockAgy := filepath.Join(tmp, "mock-agy")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + argsOut + "\"\n"
+	_ = os.WriteFile(mockAgy, []byte(script), 0o755)
+	t.Setenv("AGY_PRO_BIN", mockAgy)
+
+	if rc := runCLI([]string{"next", "--dangerously-skip-permissions", "-c"}, poolDir); rc != 0 {
+		t.Fatalf("expected exit 0 from next --dangerously-skip-permissions -c, got %d", rc)
+	}
+	if got := v.LoadState().Active; got != "bob@example.com" {
+		t.Fatalf("expected active account switched to bob@example.com, got %q", got)
+	}
+	captured, err := os.ReadFile(argsOut)
+	if err != nil {
+		t.Fatalf("mock agy was not invoked: %v", err)
+	}
+	gotArgs := string(captured)
+	if !strings.Contains(gotArgs, "--dangerously-skip-permissions") || !strings.Contains(gotArgs, "\n-c\n") {
+		t.Fatalf("expected native flags forwarded verbatim, got:\n%s", gotArgs)
+	}
+
+	// Verify `agy-pro use alice --conversation=cid-7` switches back to alice and forwards flag
+	if rc := runCLI([]string{"use", "alice", "--conversation=cid-7"}, poolDir); rc != 0 {
+		t.Fatalf("expected exit 0 from use alice --conversation=cid-7, got %d", rc)
+	}
+	if got := v.LoadState().Active; got != "alice@example.com" {
+		t.Fatalf("expected active account switched to alice@example.com, got %q", got)
+	}
+	captured2, _ := os.ReadFile(argsOut)
+	if !strings.Contains(string(captured2), "--conversation=cid-7") {
+		t.Fatalf("expected --conversation=cid-7 forwarded, got:\n%s", string(captured2))
+	}
+}
+
 func TestFirstRunAutoConfigAndShellSync(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
