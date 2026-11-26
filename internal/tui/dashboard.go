@@ -36,8 +36,8 @@ type probeDoneMsg struct {
 type autoRefreshStartMsg struct{}
 
 const (
-	autoRefreshStaleAge  = 180.0 // auto-refresh cached rows older than 3m when opening `agy-pro ui`
-	maxConcurrentProbes  = 3
+	autoRefreshStaleAge = 180.0 // auto-refresh cached rows older than 3m when opening `agy-pro ui`
+	maxConcurrentProbes = 8
 )
 
 type model struct {

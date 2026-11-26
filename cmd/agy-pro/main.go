@@ -250,7 +250,7 @@ func cmdInternalWarm(v *vault.Vault, args []string) int {
 		return 0
 	}
 	agyBin := vault.FindAgyBinary()
-	q := quota.ProbeAccount(acct, agyBin, 30*time.Second)
+	q := quota.ProbeAccountCLI(acct, agyBin, 30*time.Second)
 	if q != nil && q.Error == "" {
 		_ = v.UpdateState(func(st *vault.State) {
 			st.Quotas[email] = mergeQuotaResult(st.Quotas[email], q)
@@ -365,7 +365,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 		}
 
 		ui.StderrProgress(fmt.Sprintf("正在查询额度 [0/%d] ...", len(targets)), false)
-		fresh := quota.RefreshAll(targets, agyBin, 3, 35*time.Second, func(done, total int, email string, q *vault.Quota) {
+		fresh := quota.RefreshAll(targets, agyBin, 8, 35*time.Second, func(done, total int, email string, q *vault.Quota) {
 			tag := "ok"
 			if q.Error != "" {
 				tag = q.Error
@@ -1057,7 +1057,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		if !printMode {
 			if meta, err := vault.ReadTokenMeta(acct.TokenFile); err == nil && meta.Expiry > 0 && meta.Expiry <= float64(time.Now().Unix())+60 {
 				ui.StderrProgress(fmt.Sprintf("静默刷新 %s 登录态...", currentEmail), false)
-				qWarm := quota.ProbeAccount(acct, agyBin, 20*time.Second)
+				qWarm := quota.ProbeAccountCLI(acct, agyBin, 20*time.Second)
 				ui.StderrProgress("", true)
 				if qWarm != nil && qWarm.Error == "" {
 					_ = v.UpdateState(func(s *vault.State) {

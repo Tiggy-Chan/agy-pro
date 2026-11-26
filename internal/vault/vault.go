@@ -77,10 +77,11 @@ type State struct {
 }
 
 type TokenMeta struct {
-	Email      string
-	Expiry     float64
-	HasRefresh bool
-	AuthMethod string
+	Email       string
+	AccessToken string
+	Expiry      float64
+	HasRefresh  bool
+	AuthMethod  string
 }
 
 type Vault struct {
@@ -267,10 +268,11 @@ func ReadTokenMeta(path string) (*TokenMeta, error) {
 		method = "consumer"
 	}
 	return &TokenMeta{
-		Email:      email,
-		Expiry:     ParseISOTime(raw.Token.Expiry),
-		HasRefresh: hasRefresh,
-		AuthMethod: method,
+		Email:       email,
+		AccessToken: raw.Token.AccessToken,
+		Expiry:      ParseISOTime(raw.Token.Expiry),
+		HasRefresh:  hasRefresh,
+		AuthMethod:  method,
 	}, nil
 }
 
