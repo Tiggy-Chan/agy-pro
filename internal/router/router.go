@@ -132,7 +132,7 @@ func PickDrainWithReserve(
 ) (string, string) {
 	PruneExpiredCooldowns(st, now)
 	if len(order) == 0 {
-		return "", "号池为空，请先运行 `agy-pro login` 登录账号，或 `agy-pro import <目录>` 导入。"
+		return "", "号池为空，请先运行 `agy-pro auth login` 登录账号，或 `agy-pro auth import <目录>` 导入。"
 	}
 
 	active := st.Active

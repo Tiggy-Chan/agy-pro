@@ -51,12 +51,13 @@ type model struct {
 	width         int
 	height        int
 	spinner       spinner.Model
-	refreshing    map[string]bool
-	refreshQueue  []string
-	autoRefreshOn bool
-	toast         string
-	toastStyle    lipgloss.Style
-	result        Result
+	refreshing     map[string]bool
+	refreshQueue   []string
+	autoRefreshOn  bool
+	confirmDel     string
+	toast          string
+	toastStyle     lipgloss.Style
+	result         Result
 }
 
 func newModel(v *vault.Vault, agyBin string) model {
@@ -247,7 +248,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
+		k := msg.String()
+		if m.confirmDel != "" {
+			if k == "y" || k == "Y" || k == "d" || k == "enter" {
+				target := m.confirmDel
+				m.confirmDel = ""
+				m.vault.RemoveAccount(target)
+				m.reload()
+				m.toast = fmt.Sprintf("✓ 已移除账号: %s", target)
+				m.toastStyle = ui.SGood
+				return m, nil
+			}
+			m.confirmDel = ""
+			m.toast = "已取消移除"
+			m.toastStyle = ui.SDim
+			return m, nil
+		}
+		switch k {
 		case "q", "esc", "ctrl+c":
 			m.result = Result{Action: ActionNone}
 			return m, tea.Quit
@@ -345,7 +362,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = m.vault.UpdateState(func(s *vault.State) {
 				s.Cooldowns = map[string]*vault.Cooldown{}
 				for e, q := range s.Quotas {
-					if q != nil && ((q.H5Rem != nil && *q.H5Rem <= 0.5) || (q.D7Rem != nil && *q.D7Rem <= 0.5)) {
+					if q != nil && ((q.H5Rem != nil && *q.H5Rem <= 0.5) ||
+						(q.D7Rem != nil && *q.D7Rem <= 0.5) ||
+						(q.C5Rem != nil && *q.C5Rem <= 0.5) ||
+						(q.C7Rem != nil && *q.C7Rem <= 0.5)) {
 						delete(s.Quotas, e)
 					}
 				}
@@ -391,6 +411,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.applyAutoCompact("off")
 			} else {
 				m.applyAutoCompact(vault.DefaultAutoCompact)
+			}
+			return m, nil
+
+		case "d":
+			if len(m.order) > 0 {
+				target := m.order[m.cursor]
+				m.confirmDel = target
+				m.toast = fmt.Sprintf("! 确认移除 %s？按 y/d 确认，其他键取消", target)
+				m.toastStyle = ui.SAmberB
 			}
 			return m, nil
 
@@ -566,7 +595,7 @@ func (m model) View() string {
 		ui.KeyHint("+/-", "水位线"),
 		ui.KeyHint("[/]/a", "压缩阈值"),
 		ui.KeyHint("c", "清冷却"),
-		ui.KeyHint("l", "登录新号"),
+		ui.KeyHint("l/d", "登录/移除"),
 		ui.KeyHint("q", "退出"),
 	}
 	footer := "  " + strings.Join(keys, ui.SDim.Render("  ·  "))

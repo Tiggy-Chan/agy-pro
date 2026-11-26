@@ -330,7 +330,6 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 	for _, k := range StripEnvKeys {
 		stripSet[k] = struct{}{}
 	}
-	stripSet["SSH_CONNECTION"] = struct{}{}
 	stripSet[ForceFileTokenEnvKey] = struct{}{}
 	if overrideHome != "" {
 		stripSet["HOME"] = struct{}{}
@@ -355,7 +354,9 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 		}
 		out = append(out, kv)
 	}
-	out = append(out, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0", ForceFileTokenEnvKey+"=1")
+	// Use official AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1 instead of spoofing SSH_CONNECTION
+	// so agy keeps native local terminal detection (ssh=false) while isolating tokens cleanly.
+	out = append(out, ForceFileTokenEnvKey+"=1")
 	if overrideHome != "" {
 		out = append(out, "HOME="+overrideHome)
 	}

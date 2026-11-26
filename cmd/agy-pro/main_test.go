@@ -411,6 +411,10 @@ func TestAutoCompactEnvResolutionAndStepping(t *testing.T) {
 	}
 
 	t.Setenv(vault.AutoCompactEnvKey, "")
+	if origSSH, hadSSH := os.LookupEnv("SSH_CONNECTION"); hadSSH {
+		t.Cleanup(func() { _ = os.Setenv("SSH_CONNECTION", origSSH) })
+		_ = os.Unsetenv("SSH_CONNECTION")
+	}
 	envDefault := vault.CleanNativeEnv("")
 	found := ""
 	foundForceFile := ""
@@ -420,6 +424,9 @@ func TestAutoCompactEnvResolutionAndStepping(t *testing.T) {
 		}
 		if strings.HasPrefix(kv, vault.ForceFileTokenEnvKey+"=") {
 			foundForceFile = strings.TrimPrefix(kv, vault.ForceFileTokenEnvKey+"=")
+		}
+		if strings.HasPrefix(kv, "SSH_CONNECTION=") {
+			t.Fatalf("CleanNativeEnv must NOT spoof SSH_CONNECTION when unset, found %q", kv)
 		}
 	}
 	if found != "80%" {
@@ -439,6 +446,78 @@ func TestAutoCompactEnvResolutionAndStepping(t *testing.T) {
 		if strings.HasPrefix(kv, vault.AutoCompactEnvKey+"=") {
 			t.Fatalf("expected %s stripped when off, found %s", vault.AutoCompactEnvKey, kv)
 		}
+	}
+}
+
+func TestStreamlinedCLICommands(t *testing.T) {
+	tmp := t.TempDir()
+	fakeHome := filepath.Join(tmp, "home")
+	_ = os.MkdirAll(fakeHome, 0o700)
+	t.Setenv("HOME", fakeHome)
+	poolDir := filepath.Join(tmp, "pool")
+
+	// Pruned legacy top-level commands must be rejected with exit code 2
+	for _, removed := range []string{"dash", "tui", "order", "clear-cooldown", "run", "login", "import", "remove"} {
+		if rc := runCLI([]string{removed}, poolDir); rc != 2 {
+			t.Fatalf("expected removed command %q to exit 2, got %d", removed, rc)
+		}
+	}
+
+	// `agy-pro auth import` & `agy-pro auth rm`
+	tokPath := filepath.Join(tmp, "alice.tok")
+	tokJSON, _ := json.Marshal(map[string]any{
+		"id_token_email": "alice@example.com",
+		"token":          map[string]any{"access_token": "a", "refresh_token": "r", "expiry": "2030-01-01T00:00:00Z"},
+	})
+	_ = os.WriteFile(tokPath, tokJSON, 0o600)
+
+	if rc := runCLI([]string{"auth", "--help"}, poolDir); rc != 0 {
+		t.Fatalf("expected auth --help exit 0, got %d", rc)
+	}
+	if rc := runCLI([]string{"resume", "--help"}, poolDir); rc != 0 {
+		t.Fatalf("expected resume --help exit 0, got %d", rc)
+	}
+	if rc := runCLI([]string{"auth", "import", tokPath}, poolDir); rc != 0 {
+		t.Fatalf("expected auth import exit 0, got %d", rc)
+	}
+
+	v := vault.New(poolDir)
+	now := float64(time.Now().Unix())
+	_ = v.UpdateState(func(s *vault.State) {
+		s.Active = "alice@example.com"
+		s.Cooldowns["alice@example.com"] = &vault.Cooldown{Until: now + 3600, Reason: "5h quota exhausted", At: now}
+		s.Quotas["alice@example.com"] = &vault.Quota{H5Used: fptr(100), H5Rem: fptr(0), At: now}
+	})
+
+	// `agy-pro status --reset` clears cooldowns and exhausted cache without blocking
+	if rc := runCLI([]string{"status", "--reset", "--json"}, poolDir); rc != 0 {
+		t.Fatalf("expected status --reset --json exit 0, got %d", rc)
+	}
+	st := v.LoadState()
+	if len(st.Cooldowns) != 0 || st.Quotas["alice@example.com"] != nil {
+		t.Fatalf("expected status --reset to clear cooldown and exhausted quota, got cd=%+v q=%+v", st.Cooldowns, st.Quotas)
+	}
+
+	// `agy-pro -- <args...>` POSIX passthrough forwards args verbatim to mock agy
+	argsOut := filepath.Join(tmp, "dashdash_args.txt")
+	mockAgy := filepath.Join(tmp, "mock-agy")
+	_ = os.WriteFile(mockAgy, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \""+argsOut+"\"\n"), 0o755)
+	t.Setenv("AGY_PRO_BIN", mockAgy)
+
+	if rc := runCLI([]string{"--", "--dangerously-skip-permissions", "-p", "hello"}, poolDir); rc != 0 {
+		t.Fatalf("expected agy-pro -- passthrough exit 0, got %d", rc)
+	}
+	captured, err := os.ReadFile(argsOut)
+	if err != nil || !strings.Contains(string(captured), "--dangerously-skip-permissions") || !strings.Contains(string(captured), "\nhello\n") {
+		t.Fatalf("expected verbatim args after --, got err=%v out=%q", err, string(captured))
+	}
+
+	// `agy-pro auth rm alice` removes account cleanly
+	if rc := runCLI([]string{"auth", "rm", "alice"}, poolDir); rc != 0 {
+		t.Fatalf("expected auth rm exit 0, got %d", rc)
+	}
+	if len(v.ListAccounts()) != 0 {
+		t.Fatalf("expected account removed via auth rm")
 	}
 }
 

@@ -13,63 +13,49 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
 	"github.com/Tiggy-Chan/agy-pro/internal/router"
 	"github.com/Tiggy-Chan/agy-pro/internal/runner"
+	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/tui"
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 var validSubcommands = []string{
-	"clear-cooldown",
+	"auth",
 	"config",
-	"dash",
 	"doctor",
 	"help",
-	"import",
-	"login",
 	"next",
-	"order",
-	"remove",
 	"resume",
-	"run",
 	"status",
-	"tui",
 	"ui",
 	"use",
 }
 
 func renderHelp() string {
 	cmdLine := func(cmd, desc string) string {
-		return "  " + ui.SHeadDim.Render(ui.Pad(cmd, 26, ui.AlignLeft)) + " " + desc + "\n"
+		return "  " + ui.SHeadDim.Render(ui.Pad(cmd, 30, ui.AlignLeft)) + " " + desc + "\n"
 	}
 	var b strings.Builder
 	b.WriteString("\n")
 	b.WriteString(ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version) + "  " + ui.SDim.Render("官方 agy 零入侵原生多账号增强工具") + "\n\n")
 	b.WriteString(ui.SHead.Render("用法") + "\n")
-	b.WriteString("  " + ui.SBold.Render("agy-pro") + " " + ui.SDim.Render("[命令 | agy 原生参数...]") + "\n\n")
+	b.WriteString("  " + ui.SBold.Render("agy-pro") + " " + ui.SDim.Render("[命令 | -- agy原生参数... | agy原生参数...]") + "\n\n")
 
-	b.WriteString(ui.SHead.Render("日常使用") + "\n")
-	b.WriteString(cmdLine("agy-pro", "秒开原生 agy（直连 Google，完全尊重 agy 原生模型与 /model 切换）"))
-	b.WriteString(cmdLine("agy-pro ui", "打开交互式 TUI 仪表盘（aliases: dash, tui）"))
-	b.WriteString(cmdLine("agy-pro status [-r]", "查看号池双池看板（加 -r 在线刷新全部，--active 仅刷主号）"))
-	b.WriteString(cmdLine("agy-pro resume [会话ID]", "用当前主号续聊当前目录最近一次（或指定）会话"))
-	b.WriteString(cmdLine("agy-pro next [agy参数...]", "切到下一个可用账号；带参数时直接按新号启动 agy（兼容 -c/--conversation 等）"))
-	b.WriteString(cmdLine("agy-pro run [选项] -- ...", "显式透传参数给原生 agy"))
-	b.WriteString("\n")
-
-	b.WriteString(ui.SHead.Render("号池管理") + "\n")
-	b.WriteString(cmdLine("agy-pro login", "调用官方 agy acp --login 登录新账号并存入独立号池"))
-	b.WriteString(cmdLine("agy-pro import <路径>", "导入已有 antigravity-oauth-token 文件或目录"))
-	b.WriteString(cmdLine("agy-pro use <号> [agy参数]", "指定当前 drain 主号；带参数时直接按该号启动 agy"))
-	b.WriteString(cmdLine("agy-pro order <号1> ...", "自定义 drain 轮换顺序"))
-	b.WriteString(cmdLine("agy-pro remove <关键词>", "从号池移除指定账号"))
-	b.WriteString(cmdLine("agy-pro config reserve <N>", "设置低余量提前切号水位线（0–50，单位 %）"))
-	b.WriteString(cmdLine("agy-pro config auto-compact <V>", "设置默认 Auto-compact 阈值（默认 80%，支持 %/K/M/off）"))
-	b.WriteString(cmdLine("agy-pro clear-cooldown", "清空本地冷却与耗尽缓存"))
-	b.WriteString(cmdLine("agy-pro doctor", "环境与号池健康体检"))
+	b.WriteString(ui.SHead.Render("核心命令") + "\n")
+	b.WriteString(cmdLine("agy-pro [agy参数...]", "秒开原生 agy（直连 Google，撞 5h/7d 墙自动秒切续跑）"))
+	b.WriteString(cmdLine("agy-pro ui", "交互式号池仪表盘（选号启动、刷新、调序、调水位线/压缩、登录/移除）"))
+	b.WriteString(cmdLine("agy-pro status [-r|--reset]", "查看双池看板（-r 在线刷新，--active 仅刷主号，--reset 清冷却）"))
+	b.WriteString(cmdLine("agy-pro resume [ID] [参数]", "交互式会话选择器（当前/全部目录 + 实时搜索；也可直接传会话 ID）"))
+	b.WriteString(cmdLine("agy-pro next [agy参数...]", "切到下一个可用账号；带参数时直接按新号启动 agy"))
+	b.WriteString(cmdLine("agy-pro use <号> [agy参数]", "指定当前主号；带参数时直接按该号启动 agy"))
+	b.WriteString(cmdLine("agy-pro auth <login|import|rm>", "凭据管理：登录新账号、导入 token 文件/目录、移除账号"))
+	b.WriteString(cmdLine("agy-pro config [项 值]", "配置低余量水位线（reserve 0–50）或压缩阈值（auto-compact 80%/off）"))
+	b.WriteString(cmdLine("agy-pro doctor", "环境隔离与号池健康体检"))
 	b.WriteString("\n")
 
 	b.WriteString(ui.SHead.Render("启动选项") + "\n")
@@ -78,13 +64,14 @@ func renderHelp() string {
 	b.WriteString(cmdLine("--auto-compact <值>", "本次覆盖 Auto-compact 阈值（如 80%、800K、off）"))
 	b.WriteString(cmdLine("--refresh", "启动前先联网刷新当前主号额度"))
 	b.WriteString(cmdLine("--no-auto-switch", "关闭撞 5h/7d 墙自动秒切续跑"))
+	b.WriteString(cmdLine("-- <agy参数...>", "POSIX 显式透传后续全部参数给原生 agy"))
 	b.WriteString("\n")
 
 	b.WriteString(ui.SHead.Render("示例") + "\n")
-	b.WriteString(ui.SDim.Render("  打开交互式多号面板（上下选择、Enter 直接启动 agy）") + "\n")
-	b.WriteString("    " + ui.SAccent.Render("agy-pro ui") + "\n")
-	b.WriteString(ui.SDim.Render("  透传原生参数继续指定会话") + "\n")
-	b.WriteString("    " + ui.SAccent.Render("agy-pro --dangerously-skip-permissions -r <conversation-id>") + "\n")
+	b.WriteString(ui.SDim.Render("  交互式浏览当前/全部目录会话并续聊（支持实时搜索、Ctrl+N 换号恢复）") + "\n")
+	b.WriteString("    " + ui.SAccent.Render("agy-pro resume --dangerously-skip-permissions") + "\n")
+	b.WriteString(ui.SDim.Render("  切到下一个可用账号并直接按原生参数打开对话") + "\n")
+	b.WriteString("    " + ui.SAccent.Render("agy-pro next --dangerously-skip-permissions") + "\n")
 	return b.String()
 }
 
@@ -300,7 +287,7 @@ func statusBadge(isActive, ok bool, why string, q *vault.Quota, reservePct float
 }
 
 func cmdStatus(v *vault.Vault, args []string) int {
-	var doRefresh, onlyActive, noAutoInit, asJSON bool
+	var doRefresh, onlyActive, noAutoInit, asJSON, doReset bool
 	for _, a := range args {
 		switch a {
 		case "-r", "--refresh":
@@ -309,10 +296,12 @@ func cmdStatus(v *vault.Vault, args []string) int {
 			onlyActive = true
 		case "--no-auto-init":
 			noAutoInit = true
+		case "--reset":
+			doReset = true
 		case "--json":
 			asJSON = true
 		case "-h", "--help":
-			fmt.Println("用法: agy-pro status [-r|--refresh] [--active] [--no-auto-init] [--json]")
+			fmt.Println("用法: agy-pro status [-r|--refresh] [--active] [--reset] [--no-auto-init] [--json]")
 			return 0
 		default:
 			fmt.Fprintf(os.Stderr, "%s 未知选项: %s\n", ui.SRedB.Render("error:"), a)
@@ -320,11 +309,31 @@ func cmdStatus(v *vault.Vault, args []string) int {
 		}
 	}
 
+	if doReset {
+		_ = v.UpdateState(func(st *vault.State) {
+			st.Cooldowns = map[string]*vault.Cooldown{}
+			for email, q := range st.Quotas {
+				if q != nil && ((q.H5Rem != nil && *q.H5Rem <= 0.5) ||
+					(q.D7Rem != nil && *q.D7Rem <= 0.5) ||
+					(q.C5Rem != nil && *q.C5Rem <= 0.5) ||
+					(q.C7Rem != nil && *q.C7Rem <= 0.5)) {
+					delete(st.Quotas, email)
+				}
+			}
+		})
+		if !asJSON {
+			fmt.Printf("%s 已清空所有账号的本地冷却与耗尽缓存\n", ui.SGoodB.Render("✓"))
+		}
+		if !doRefresh {
+			noAutoInit = true
+		}
+	}
+
 	accounts := v.ListAccounts()
 	st := v.LoadState()
 	order := v.OrderedEmails(accounts, st)
 	if len(order) == 0 {
-		fmt.Println(ui.SAmber.Render("!") + " 号池为空。请运行 " + ui.SHeadDim.Render("agy-pro login") + " 登录账号，或 " + ui.SHeadDim.Render("agy-pro import <目录>") + " 导入。")
+		fmt.Println(ui.SAmber.Render("!") + " 号池为空。请运行 " + ui.SHeadDim.Render("agy-pro auth login") + " 登录账号，或 " + ui.SHeadDim.Render("agy-pro auth import <目录>") + " 导入。")
 		return 1
 	}
 
@@ -618,6 +627,27 @@ func cmdConfig(v *vault.Vault, args []string) int {
 	return 2
 }
 
+func cmdAuth(v *vault.Vault, args []string) int {
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+		fmt.Println("用法: agy-pro auth <login | import <路径> | rm <关键词|邮箱>>")
+		fmt.Println("  login           调用官方 agy acp --login 登录新账号并存入独立号池")
+		fmt.Println("  import <路径>   导入已有 antigravity-oauth-token 文件或目录")
+		fmt.Println("  rm <关键词>     从号池移除指定账号")
+		return 0
+	}
+	switch args[0] {
+	case "login":
+		return cmdLogin(v)
+	case "import":
+		return cmdImport(v, args[1:])
+	case "rm", "remove":
+		return cmdRemove(v, args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "%s 未知 auth 子命令: %s（支持 login / import / rm）\n", ui.SRedB.Render("error:"), args[0])
+		return 2
+	}
+}
+
 func cmdLogin(v *vault.Vault) int {
 	agyBin := vault.FindAgyBinary()
 	fmt.Println(ui.SHeadDim.Render("→") + " 正在调用官方 " + ui.SBold.Render("agy acp --login") + " 登录新 Google 账号" + ui.SDim.Render("（隔离临时目录，不影响系统钥匙串）"))
@@ -632,7 +662,7 @@ func cmdLogin(v *vault.Vault) int {
 
 func cmdImport(v *vault.Vault, args []string) int {
 	if len(args) != 1 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "用法: agy-pro import <token文件或目录>")
+		fmt.Fprintln(os.Stderr, "用法: agy-pro auth import <token文件或目录>")
 		return 2
 	}
 	p := args[0]
@@ -671,8 +701,8 @@ func cmdImport(v *vault.Vault, args []string) int {
 }
 
 func cmdRemove(v *vault.Vault, args []string) int {
-	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "用法: agy-pro remove <关键词|邮箱>")
+	if len(args) != 1 || args[0] == "-h" || args[0] == "--help" {
+		fmt.Fprintln(os.Stderr, "用法: agy-pro auth rm <关键词|邮箱>")
 		return 2
 	}
 	accounts := v.ListAccounts()
@@ -712,44 +742,6 @@ func cmdUse(v *vault.Vault, args []string) int {
 		delete(s.Cooldowns, email)
 	})
 	fmt.Printf("%s 当前主号已切换为: %s\n", ui.SGoodB.Render("✓"), ui.SBold.Render(email))
-	return 0
-}
-
-func cmdOrder(v *vault.Vault, args []string) int {
-	accounts := v.ListAccounts()
-	st := v.LoadState()
-	cur := v.OrderedEmails(accounts, st)
-	if len(args) == 0 {
-		for i, e := range cur {
-			fmt.Printf("  %s %s\n", ui.SDim.Render(fmt.Sprintf("%d.", i+1)), e)
-		}
-		return 0
-	}
-	var newOrder []string
-	seen := map[string]bool{}
-	for _, t := range args {
-		email, errMsg := matchEmail(cur, t)
-		if email == "" {
-			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("error:"), errMsg)
-			return 1
-		}
-		if !seen[email] {
-			newOrder = append(newOrder, email)
-			seen[email] = true
-		}
-	}
-	for _, e := range cur {
-		if !seen[e] {
-			newOrder = append(newOrder, e)
-		}
-	}
-	_ = v.UpdateState(func(s *vault.State) {
-		s.Order = newOrder
-	})
-	fmt.Printf("%s 已更新 drain 顺序:\n", ui.SGoodB.Render("✓"))
-	for i, e := range newOrder {
-		fmt.Printf("  %s %s\n", ui.SDim.Render(fmt.Sprintf("%d.", i+1)), e)
-	}
 	return 0
 }
 
@@ -803,7 +795,7 @@ func cmdDoctor(v *vault.Vault) int {
 		okAll = false
 	}
 	if forceFileEnv == "1" {
-		envLines = append(envLines, fmt.Sprintf("  %s 凭据隔离    %s", ui.SGood.Render("✓"), ui.SDim.Render("强制文件 token（绕过系统 Keychain）")))
+		envLines = append(envLines, fmt.Sprintf("  %s 凭据隔离    %s", ui.SGood.Render("✓"), ui.SDim.Render("文件 token ("+vault.ForceFileTokenEnvKey+"=1)")))
 	} else {
 		envLines = append(envLines, fmt.Sprintf("  %s 凭据隔离    %s", ui.SRed.Render("✗"), ui.SRed.Render("未设置 "+vault.ForceFileTokenEnvKey)))
 		okAll = false
@@ -820,7 +812,7 @@ func cmdDoctor(v *vault.Vault) int {
 
 	var acctLines []string
 	if len(order) == 0 {
-		acctLines = append(acctLines, fmt.Sprintf("  %s %s", ui.SRed.Render("✗"), ui.SAmber.Render("号池为空（请运行 agy-pro login）")))
+		acctLines = append(acctLines, fmt.Sprintf("  %s %s", ui.SRed.Render("✗"), ui.SAmber.Render("号池为空（请运行 agy-pro auth login）")))
 		okAll = false
 	}
 	for _, e := range order {
@@ -960,7 +952,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	order := v.OrderedEmails(accounts, st)
 	if len(order) == 0 {
 		fmt.Fprintf(os.Stderr, "%s 独立号池为空。请先运行 %s 或 %s。\n",
-			ui.SRedB.Render("error:"), ui.SHeadDim.Render("agy-pro login"), ui.SHeadDim.Render("agy-pro import <目录>"))
+			ui.SRedB.Render("error:"), ui.SHeadDim.Render("agy-pro auth login"), ui.SHeadDim.Render("agy-pro auth import <目录>"))
 		return 1
 	}
 
@@ -1342,6 +1334,61 @@ func bootstrapFirstRun(v *vault.Vault, argv []string, explicitDir bool) {
 	fmt.Fprintf(os.Stderr, "%s %s %s\n", ui.Brand("agy-pro"), ui.SDim.Render("·"), ui.SGood.Render(msg))
 }
 
+func cmdResume(v *vault.Vault, rest []string) int {
+	if len(rest) == 1 && (rest[0] == "-h" || rest[0] == "--help") {
+		fmt.Println("用法: agy-pro resume [会话ID] [agy原生参数...]")
+		fmt.Println("  不带会话ID时打开交互式会话选择器（默认当前目录，Tab 切换全部目录，支持实时搜索，Enter 当前号恢复，Ctrl+N 下个号恢复）。")
+		fmt.Println("  指定会话ID时直接恢复该会话，其余参数透传给原生 agy（如 --dangerously-skip-permissions）。")
+		return 0
+	}
+	opts, pass := parseRunFlags(rest)
+	if opts.flagErr != "" {
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("error:"), opts.flagErr)
+		return 2
+	}
+	if len(pass) > 0 && !strings.HasPrefix(pass[0], "-") {
+		conv := pass[0]
+		return cmdRun(v, append([]string{"--resume", conv}, pass[1:]...), opts)
+	}
+
+	if !isPrintModeArgs(pass) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		list, err := sessions.List("", 300)
+		if err == nil && len(list) > 0 {
+			cwd, _ := os.Getwd()
+			accounts := v.ListAccounts()
+			st := v.LoadState()
+			order := v.OrderedEmails(accounts, st)
+			activeEmail := st.Active
+			if opts.explicitAccount != "" {
+				if matched, _ := matchEmail(order, opts.explicitAccount); matched != "" {
+					activeEmail = matched
+				} else {
+					activeEmail = opts.explicitAccount
+				}
+			} else if _, ok := accounts[activeEmail]; !ok && len(order) > 0 {
+				activeEmail = order[0]
+			}
+
+			picked, pickErr := tui.RunSessionPicker(list, cwd, activeEmail)
+			if pickErr != nil {
+				fmt.Fprintf(os.Stderr, "%s 无法打开会话选择器: %v\n", ui.SRedB.Render("error:"), pickErr)
+				return 1
+			}
+			if !picked.Selected {
+				return 0
+			}
+			if picked.UseNextAccount {
+				opts.forceNext = true
+				opts.explicitAccount = ""
+			}
+			return cmdRun(v, append([]string{"--resume", picked.ConversationID}, pass...), opts)
+		}
+	}
+
+	opts.resumeLast = true
+	return cmdRun(v, pass, opts)
+}
+
 func runCLI(argv []string, stateDir string) int {
 	explicitDir := stateDir != "" || os.Getenv("AGY_PRO_STATE_DIR") != ""
 	if stateDir == "" {
@@ -1363,39 +1410,18 @@ func runCLI(argv []string, stateDir string) int {
 	case "-V", "--version":
 		fmt.Printf("%s %s\n", ui.Brand("agy-pro"), vault.Version)
 		return 0
+	case "--":
+		return cmdRun(v, rest, runOptions{autoSwitch: true})
 	case "_verify":
 		return cmdInternalVerify(v, rest)
 	case "_warm":
 		return cmdInternalWarm(v, rest)
-	case "ui", "dash", "tui":
+	case "ui":
 		return cmdUI(v)
 	case "status":
 		return cmdStatus(v, rest)
-	case "config":
-		return cmdConfig(v, rest)
-	case "login":
-		return cmdLogin(v)
-	case "import":
-		return cmdImport(v, rest)
-	case "remove":
-		return cmdRemove(v, rest)
-	case "use":
-		return cmdUse(v, rest)
-	case "order":
-		return cmdOrder(v, rest)
-	case "clear-cooldown":
-		_ = v.UpdateState(func(st *vault.State) {
-			st.Cooldowns = map[string]*vault.Cooldown{}
-			for email, q := range st.Quotas {
-				if q != nil && ((q.H5Rem != nil && *q.H5Rem <= 0.5) || (q.D7Rem != nil && *q.D7Rem <= 0.5)) {
-					delete(st.Quotas, email)
-				}
-			}
-		})
-		fmt.Printf("%s 已清空所有账号的本地冷却与耗尽缓存 %s\n", ui.SGoodB.Render("✓"), ui.SDim.Render("(可运行 agy-pro status -r 刷新)"))
-		return 0
-	case "doctor":
-		return cmdDoctor(v)
+	case "resume":
+		return cmdResume(v, rest)
 	case "next":
 		if len(rest) == 1 && (rest[0] == "-h" || rest[0] == "--help") {
 			fmt.Println("用法: agy-pro next [agy原生参数...]\n  不带参数时仅切到下一个可用主号；带任意参数时直接切号并透传启动 agy（如 agy-pro next --dangerously-skip-permissions 或 agy-pro next -c）。")
@@ -1424,17 +1450,14 @@ func runCLI(argv []string, stateDir string) int {
 		})
 		fmt.Printf("%s 主号已切换: %s %s %s\n", ui.SGoodB.Render("✓"), ui.SDim.Render(old), ui.SAccentB.Render("→"), ui.SBold.Render(nxt))
 		return 0
-	case "resume":
-		opts, pass := parseRunFlags(rest)
-		if len(pass) > 0 && !strings.HasPrefix(pass[0], "-") {
-			conv := pass[0]
-			return cmdRun(v, append([]string{"--resume", conv}, pass[1:]...), opts)
-		}
-		opts.resumeLast = true
-		return cmdRun(v, pass, opts)
-	case "run":
-		opts, pass := parseRunFlags(rest)
-		return cmdRun(v, pass, opts)
+	case "use":
+		return cmdUse(v, rest)
+	case "auth":
+		return cmdAuth(v, rest)
+	case "config":
+		return cmdConfig(v, rest)
+	case "doctor":
+		return cmdDoctor(v)
 	}
 
 	if !strings.HasPrefix(cmd, "-") {
@@ -1443,7 +1466,7 @@ func runCLI(argv []string, stateDir string) int {
 		if sug := suggestSubcommand(cmd); sug != "" {
 			fmt.Fprintf(os.Stderr, "最相似的命令是：%s\n", ui.SHeadDim.Render(sug))
 		}
-		fmt.Fprintf(os.Stderr, "%s\n", ui.SDim.Render("查看全部命令：agy-pro --help（如需透传参数给 agy，请用 agy-pro run -- ...）"))
+		fmt.Fprintf(os.Stderr, "%s\n", ui.SDim.Render("查看全部命令：agy-pro --help（如需显式透传参数给 agy，请用 agy-pro -- ...）"))
 		return 2
 	}
 
