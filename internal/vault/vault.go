@@ -7,10 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +21,10 @@ import (
 )
 
 const (
-	Version = "0.1.0-dev"
+	Version               = "0.1.0-dev"
+	DefaultAutoCompact    = "80%"
+	AutoCompactEnvKey     = "AGY_CLI_AUTO_COMPACT_OVERRIDE"
+	ForceFileTokenEnvKey  = "AGY_CLI_FORCE_FILE_TOKEN_STORAGE"
 )
 
 var StripEnvKeys = []string{
@@ -60,12 +66,14 @@ type Quota struct {
 }
 
 type State struct {
-	Active     string               `json:"active"`
-	Order      []string             `json:"order"`
-	ReservePct float64              `json:"reserve_pct,omitempty"`
-	Cooldowns  map[string]*Cooldown `json:"cooldowns"`
-	Quotas     map[string]*Quota    `json:"quotas"`
-	LastConv   map[string]string    `json:"last_conv"`
+	Active             string               `json:"active"`
+	Order              []string             `json:"order"`
+	ReservePct         float64              `json:"reserve_pct,omitempty"`
+	AutoCompact        string               `json:"auto_compact,omitempty"`
+	FirstRunConfigured bool                 `json:"first_run_configured,omitempty"`
+	Cooldowns          map[string]*Cooldown `json:"cooldowns"`
+	Quotas             map[string]*Quota    `json:"quotas"`
+	LastConv           map[string]string    `json:"last_conv"`
 }
 
 type TokenMeta struct {
@@ -108,6 +116,10 @@ func DefaultStateDir() string {
 		return filepath.Join(xdg, "agy-pro")
 	}
 	return filepath.Join(HomeDir(), ".local", "state", "agy-pro")
+}
+
+func (v *Vault) IsDefaultStateDir() bool {
+	return filepath.Clean(v.StateDir) == filepath.Clean(DefaultStateDir())
 }
 
 func New(stateDir string) *Vault {
@@ -305,32 +317,306 @@ func AtomicCopySecret(src, dst string) error {
 }
 
 func CleanNativeEnv(overrideHome string) []string {
-	stripSet := make(map[string]struct{}, len(StripEnvKeys)+2)
+	return CleanNativeEnvWithCompact(overrideHome, "", false)
+}
+
+// CleanNativeEnvWithCompact prepares a clean environment for native `agy`.
+// When forceCompact is true, AGY_CLI_AUTO_COMPACT_OVERRIDE is explicitly set to
+// autoCompact (or stripped when autoCompact == ""). When forceCompact is false,
+// an existing AGY_CLI_AUTO_COMPACT_OVERRIDE in the caller's environment is preserved
+// or defaulted to DefaultAutoCompact ("80%").
+func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bool) []string {
+	stripSet := make(map[string]struct{}, len(StripEnvKeys)+4)
 	for _, k := range StripEnvKeys {
 		stripSet[k] = struct{}{}
 	}
 	stripSet["SSH_CONNECTION"] = struct{}{}
+	stripSet[ForceFileTokenEnvKey] = struct{}{}
 	if overrideHome != "" {
 		stripSet["HOME"] = struct{}{}
 	}
+	if forceCompact {
+		stripSet[AutoCompactEnvKey] = struct{}{}
+	}
 
 	orig := os.Environ()
-	out := make([]string, 0, len(orig)+2)
+	out := make([]string, 0, len(orig)+4)
+	hasCompactEnv := false
 	for _, kv := range orig {
-		k, _, ok := strings.Cut(kv, "=")
+		k, val, ok := strings.Cut(kv, "=")
 		if !ok {
 			continue
 		}
 		if _, drop := stripSet[k]; drop {
 			continue
 		}
+		if k == AutoCompactEnvKey && strings.TrimSpace(val) != "" {
+			hasCompactEnv = true
+		}
 		out = append(out, kv)
 	}
-	out = append(out, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0")
+	out = append(out, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0", ForceFileTokenEnvKey+"=1")
 	if overrideHome != "" {
 		out = append(out, "HOME="+overrideHome)
 	}
+	if forceCompact {
+		if autoCompact != "" {
+			out = append(out, AutoCompactEnvKey+"="+autoCompact)
+		}
+	} else if !hasCompactEnv {
+		out = append(out, AutoCompactEnvKey+"="+DefaultAutoCompact)
+	}
 	return out
+}
+
+func NormalizeAutoCompact(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", errors.New("不能为空（示例: 80%、800K、700000 或 off）")
+	}
+	low := strings.ToLower(s)
+	if low == "off" || low == "default" || low == "none" {
+		return "off", nil
+	}
+	if strings.HasSuffix(s, "%") {
+		numStr := strings.TrimSpace(strings.TrimSuffix(s, "%"))
+		v, err := strconv.ParseFloat(numStr, 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 100 {
+			return "", errors.New("百分比需在 1% 到 100% 之间（例如: 80%）")
+		}
+		if float64(int64(v)) == v {
+			return fmt.Sprintf("%d%%", int64(v)), nil
+		}
+		return strconv.FormatFloat(v, 'f', -1, 64) + "%", nil
+	}
+	last := s[len(s)-1]
+	if last == 'k' || last == 'K' || last == 'm' || last == 'M' {
+		numStr := strings.TrimSpace(s[:len(s)-1])
+		v, err := strconv.ParseFloat(numStr, 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 1e9 {
+			return "", fmt.Errorf("无效的 Auto-compact 值: %s（示例: 80%%、800K、0.5M、700000 或 off）", raw)
+		}
+		return numStr + strings.ToUpper(string(last)), nil
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n <= 0 {
+		return "", fmt.Errorf("无效的 Auto-compact 值: %s（示例: 80%%、800K、0.5M、700000 或 off）", raw)
+	}
+	return strconv.FormatInt(n, 10), nil
+}
+
+func EffectiveAutoCompact(st *State) string {
+	if st == nil {
+		return DefaultAutoCompact
+	}
+	v := strings.TrimSpace(st.AutoCompact)
+	if v == "" {
+		return DefaultAutoCompact
+	}
+	if strings.EqualFold(v, "off") || strings.EqualFold(v, "default") || strings.EqualFold(v, "none") {
+		return ""
+	}
+	return v
+}
+
+func DisplayAutoCompact(st *State) string {
+	if eff := EffectiveAutoCompact(st); eff != "" {
+		return eff
+	}
+	return "off"
+}
+
+func StepAutoCompact(current string, deltaPct int) string {
+	eff := EffectiveAutoCompact(&State{AutoCompact: current})
+	if eff == "" {
+		if deltaPct < 0 {
+			return "95%"
+		}
+		return DefaultAutoCompact
+	}
+	if strings.HasSuffix(eff, "%") {
+		if v, err := strconv.ParseFloat(strings.TrimSuffix(eff, "%"), 64); err == nil {
+			next := int(v+0.5) + deltaPct
+			if next > 95 {
+				return "off"
+			}
+			if next < 30 {
+				return "30%"
+			}
+			return fmt.Sprintf("%d%%", next)
+		}
+	}
+	return DefaultAutoCompact
+}
+
+func ResolveAutoCompact(st *State, cliOverride string) (string, bool) {
+	if strings.TrimSpace(cliOverride) != "" {
+		if norm, err := NormalizeAutoCompact(cliOverride); err == nil {
+			if norm == "off" {
+				return "", true
+			}
+			return norm, true
+		}
+	}
+	return EffectiveAutoCompact(st), true
+}
+
+func shellTargetFiles(homeDir string, allowCreateIfNone bool) []string {
+	candidates := []string{".zshenv", ".zshrc", ".bashrc", ".profile"}
+	seen := map[string]bool{}
+	var paths []string
+	add := func(name string) {
+		p := filepath.Join(homeDir, name)
+		if !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	for _, name := range candidates {
+		p := filepath.Join(homeDir, name)
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			add(name)
+		}
+	}
+	// Only create a default rc file if NO existing shell rc file was found at all,
+	// avoiding unsolicited creation of extra dotfiles (like .zshenv or .profile).
+	if len(paths) == 0 && allowCreateIfNone {
+		sh := strings.ToLower(filepath.Base(os.Getenv("SHELL")))
+		switch {
+		case runtime.GOOS == "darwin" || strings.Contains(sh, "zsh"):
+			add(".zshrc")
+		case runtime.GOOS == "linux" || strings.Contains(sh, "bash"):
+			add(".bashrc")
+		default:
+			add(".profile")
+		}
+	}
+	return paths
+}
+
+func isManagedAutoCompactComment(line string) bool {
+	t := strings.TrimSpace(line)
+	return strings.HasPrefix(t, "# Added by agy-pro") ||
+		strings.HasPrefix(t, "# Antigravity CLI (agy")
+}
+
+func isAutoCompactExportLine(line string) bool {
+	t := strings.TrimSpace(line)
+	if strings.HasPrefix(t, "#") {
+		return false
+	}
+	return strings.HasPrefix(t, "export "+AutoCompactEnvKey+"=") ||
+		strings.HasPrefix(t, AutoCompactEnvKey+"=")
+}
+
+// SyncShellAutoCompact writes or updates AGY_CLI_AUTO_COMPACT_OVERRIDE in user shell rc files.
+// On first-run setup (updateExisting=false), files that already define AGY_CLI_AUTO_COMPACT_OVERRIDE
+// are left untouched. On explicit config changes (updateExisting=true), existing lines are updated
+// or removed when effectiveVal is empty.
+func SyncShellAutoCompact(homeDir, effectiveVal string, updateExisting bool) []string {
+	if homeDir == "" {
+		return nil
+	}
+	paths := shellTargetFiles(homeDir, effectiveVal != "" && !updateExisting)
+	if updateExisting && effectiveVal != "" {
+		paths = shellTargetFiles(homeDir, true)
+	}
+	var updated []string
+	exportLine := ""
+	if effectiveVal != "" {
+		exportLine = fmt.Sprintf("export %s=%q", AutoCompactEnvKey, effectiveVal)
+	}
+
+	for _, p := range paths {
+		perm := os.FileMode(0o644)
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			if !os.IsNotExist(err) || effectiveVal == "" {
+				continue
+			}
+		} else if info, statErr := os.Stat(p); statErr == nil {
+			perm = info.Mode().Perm()
+		}
+
+		orig := strings.ReplaceAll(string(raw), "\r\n", "\n")
+		var lines []string
+		if orig != "" {
+			trimmed := strings.TrimSuffix(orig, "\n")
+			lines = strings.Split(trimmed, "\n")
+		}
+
+		hasKey := false
+		for _, ln := range lines {
+			if isAutoCompactExportLine(ln) {
+				hasKey = true
+				break
+			}
+		}
+		if hasKey && !updateExisting {
+			continue
+		}
+		if !hasKey && effectiveVal == "" {
+			continue
+		}
+
+		var out []string
+		if hasKey {
+			for i := 0; i < len(lines); i++ {
+				if isAutoCompactExportLine(lines[i]) {
+					if effectiveVal == "" {
+						if len(out) > 0 && isManagedAutoCompactComment(out[len(out)-1]) {
+							out = out[:len(out)-1]
+							if len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+								out = out[:len(out)-1]
+							}
+						}
+						continue
+					}
+					out = append(out, exportLine)
+				} else {
+					out = append(out, lines[i])
+				}
+			}
+		} else {
+			out = append(out, lines...)
+			if len(out) > 0 && strings.TrimSpace(out[len(out)-1]) != "" {
+				out = append(out, "")
+			}
+			out = append(out, "# Added by agy-pro (default Auto-compact for agy & agy-pro)", exportLine)
+		}
+
+		next := ""
+		if len(out) > 0 {
+			next = strings.Join(out, "\n") + "\n"
+		}
+		if next == orig {
+			continue
+		}
+		writePath := p
+		if resolved, symErr := filepath.EvalSymlinks(p); symErr == nil && resolved != "" {
+			writePath = resolved
+		}
+		if err := AtomicWriteFile(writePath, []byte(next), perm); err == nil {
+			updated = append(updated, p)
+		}
+	}
+	return updated
+}
+
+func ApplyLaunchctlAutoCompact(effectiveVal string, overwrite bool) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	if !overwrite {
+		if out, err := exec.Command("launchctl", "getenv", AutoCompactEnvKey).Output(); err == nil && strings.TrimSpace(string(out)) != "" {
+			return
+		}
+	}
+	if effectiveVal == "" {
+		_ = exec.Command("launchctl", "unsetenv", AutoCompactEnvKey).Run()
+		return
+	}
+	_ = exec.Command("launchctl", "setenv", AutoCompactEnvKey, effectiveVal).Run()
 }
 
 func (v *Vault) EnsureDirs() error {
@@ -345,10 +631,11 @@ func (v *Vault) EnsureDirs() error {
 
 func newEmptyState() *State {
 	return &State{
-		Order:     []string{},
-		Cooldowns: map[string]*Cooldown{},
-		Quotas:    map[string]*Quota{},
-		LastConv:  map[string]string{},
+		Order:       []string{},
+		AutoCompact: DefaultAutoCompact,
+		Cooldowns:   map[string]*Cooldown{},
+		Quotas:      map[string]*Quota{},
+		LastConv:    map[string]string{},
 	}
 }
 
@@ -364,6 +651,9 @@ func (v *Vault) LoadState() *State {
 	}
 	if st.Order == nil {
 		st.Order = []string{}
+	}
+	if strings.TrimSpace(st.AutoCompact) == "" {
+		st.AutoCompact = DefaultAutoCompact
 	}
 	if st.Cooldowns == nil {
 		st.Cooldowns = map[string]*Cooldown{}
@@ -397,6 +687,62 @@ func (v *Vault) UpdateState(fn func(st *State)) error {
 		fn(st)
 		return v.SaveState(st)
 	})
+}
+
+// EnsureFirstRunConfig performs one-time initialization on first launch:
+// persists the built-in 80% Auto-compact default in state.json and configures
+// shell profiles (when homeDir is non-empty) so native `agy` also inherits it.
+func (v *Vault) EnsureFirstRunConfig(homeDir string, applyLaunchctl bool) (bool, []string, error) {
+	if _, err := os.Stat(v.StateFile); err == nil {
+		if st := v.LoadState(); st.FirstRunConfigured {
+			return false, nil, nil
+		}
+	}
+	var didConfigure bool
+	var touched []string
+	err := v.withLock(func() error {
+		st := v.LoadState()
+		if st.FirstRunConfigured {
+			return nil
+		}
+		if strings.TrimSpace(st.AutoCompact) == "" {
+			st.AutoCompact = DefaultAutoCompact
+		}
+		eff := EffectiveAutoCompact(st)
+		if homeDir != "" && eff != "" {
+			touched = SyncShellAutoCompact(homeDir, eff, false)
+		}
+		if applyLaunchctl && eff != "" {
+			ApplyLaunchctlAutoCompact(eff, false)
+		}
+		st.FirstRunConfigured = true
+		didConfigure = true
+		return v.SaveState(st)
+	})
+	return didConfigure, touched, err
+}
+
+// SetAutoCompact validates, persists, and syncs the Auto-compact threshold across state.json and shell profiles.
+func (v *Vault) SetAutoCompact(rawVal, homeDir string, applyLaunchctl bool) (string, []string, error) {
+	norm, err := NormalizeAutoCompact(rawVal)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := v.UpdateState(func(st *State) {
+		st.AutoCompact = norm
+		st.FirstRunConfigured = true
+	}); err != nil {
+		return "", nil, err
+	}
+	eff := EffectiveAutoCompact(&State{AutoCompact: norm})
+	var touched []string
+	if homeDir != "" {
+		touched = SyncShellAutoCompact(homeDir, eff, true)
+	}
+	if applyLaunchctl {
+		ApplyLaunchctlAutoCompact(eff, true)
+	}
+	return norm, touched, nil
 }
 
 func (v *Vault) ListAccounts() map[string]*Account {

@@ -286,12 +286,51 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toastStyle = ui.SGood
 			return m, nil
 
+		case "[":
+			m.applyAutoCompact(vault.StepAutoCompact(m.state.AutoCompact, -5))
+			return m, nil
+
+		case "]":
+			m.applyAutoCompact(vault.StepAutoCompact(m.state.AutoCompact, +5))
+			return m, nil
+
+		case "a":
+			cur := vault.EffectiveAutoCompact(m.state)
+			if cur == vault.DefaultAutoCompact {
+				m.applyAutoCompact("off")
+			} else {
+				m.applyAutoCompact(vault.DefaultAutoCompact)
+			}
+			return m, nil
+
 		case "l":
 			m.result = Result{Action: ActionLogin}
 			return m, tea.Quit
 		}
 	}
 	return m, nil
+}
+
+func (m *model) applyAutoCompact(raw string) {
+	shellHome := ""
+	applyLaunchctl := false
+	if m.vault.IsDefaultStateDir() {
+		shellHome = vault.HomeDir()
+		applyLaunchctl = true
+	}
+	norm, _, err := m.vault.SetAutoCompact(raw, shellHome, applyLaunchctl)
+	if err != nil {
+		m.toast = fmt.Sprintf("! %v", err)
+		m.toastStyle = ui.SAmber
+		return
+	}
+	m.reload()
+	if norm == "off" {
+		m.toast = "✓ Auto-compact 已关闭（跟随 agy 服务端默认）"
+	} else {
+		m.toast = fmt.Sprintf("✓ 默认 Auto-compact: %s", norm)
+	}
+	m.toastStyle = ui.SGood
 }
 
 func (m model) View() string {
@@ -322,6 +361,7 @@ func (m model) View() string {
 		ui.SHeadDim.Render("native"),
 		ui.SDim.Render("drain"),
 		ui.SDim.Render(fmt.Sprintf("reserve %.0f%%", m.state.ReservePct)),
+		ui.SDim.Render("compact " + vault.DisplayAutoCompact(m.state)),
 	}
 	if oldestAt > 0 {
 		metaParts = append(metaParts, ui.SDim.Render("cache "+vault.FmtAge(oldestAt, now)))
@@ -433,6 +473,7 @@ func (m model) View() string {
 		ui.KeyHint("r/R", "刷新全部/单个"),
 		ui.KeyHint("J/K", "调序"),
 		ui.KeyHint("+/-", "水位线"),
+		ui.KeyHint("[/]/a", "压缩阈值"),
 		ui.KeyHint("c", "清冷却"),
 		ui.KeyHint("l", "登录新号"),
 		ui.KeyHint("q", "退出"),

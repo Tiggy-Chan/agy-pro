@@ -392,6 +392,7 @@ func RunInteractiveOnce(
 	initialConvID string,
 	acct *vault.Account,
 	autoSwitch bool,
+	env []string,
 ) *RunResult {
 	startTime := time.Now()
 	stdinFd := int(os.Stdin.Fd())
@@ -401,7 +402,11 @@ func RunInteractiveOnce(
 	defer guard.Restore()
 
 	cmd := exec.Command(agyBin, agyArgs...)
-	cmd.Env = vault.CleanNativeEnv("")
+	if len(env) > 0 {
+		cmd.Env = env
+	} else {
+		cmd.Env = vault.CleanNativeEnv("")
+	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -531,10 +536,14 @@ loop:
 }
 
 // RunPrintOnce executes non-interactive `agy --print ...` completely detached from /dev/tty.
-func RunPrintOnce(agyBin string, agyArgs []string, logPath string, acct *vault.Account, autoSwitch bool) *RunResult {
+func RunPrintOnce(agyBin string, agyArgs []string, logPath string, acct *vault.Account, autoSwitch bool, env []string) *RunResult {
 	startTime := time.Now()
 	cmd := exec.Command(agyBin, agyArgs...)
-	cmd.Env = vault.CleanNativeEnv("")
+	if len(env) > 0 {
+		cmd.Env = env
+	} else {
+		cmd.Env = vault.CleanNativeEnv("")
+	}
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 

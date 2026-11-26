@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"golang.org/x/sys/unix"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
 	"github.com/Tiggy-Chan/agy-pro/internal/router"
@@ -210,6 +209,146 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	if got := v.LoadState().ReservePct; got != 10 {
 		t.Fatalf("expected saved ReservePct=10, got %v", got)
 	}
+	if got := vault.EffectiveAutoCompact(v.LoadState()); got != "80%" {
+		t.Fatalf("expected default AutoCompact=80%%, got %q", got)
+	}
+	if rc := runCLI([]string{"config", "auto-compact", "bad!"}, dir); rc != 2 {
+		t.Fatalf("expected exit 2 on invalid auto-compact, got %d", rc)
+	}
+	if rc := runCLI([]string{"config", "auto-compact", "75%"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config auto-compact 75%%, got %d", rc)
+	}
+	if got := vault.EffectiveAutoCompact(v.LoadState()); got != "75%" {
+		t.Fatalf("expected AutoCompact=75%%, got %q", got)
+	}
+	if rc := runCLI([]string{"config", "auto-compact", "off"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config auto-compact off, got %d", rc)
+	}
+	if got := vault.EffectiveAutoCompact(v.LoadState()); got != "" {
+		t.Fatalf("expected disabled EffectiveAutoCompact=\"\", got %q", got)
+	}
+	// Invalid CLI launch flags must fail fast with exit code 2 (not silently ignored)
+	if rc := runCLI([]string{"--auto-compact", "NaN%"}, dir); rc != 2 {
+		t.Fatalf("expected exit 2 on --auto-compact NaN%%, got %d", rc)
+	}
+	if rc := runCLI([]string{"--auto-compact", "InfK"}, dir); rc != 2 {
+		t.Fatalf("expected exit 2 on --auto-compact InfK, got %d", rc)
+	}
+	if rc := runCLI([]string{"--reserve", "99"}, dir); rc != 2 {
+		t.Fatalf("expected exit 2 on --reserve 99, got %d", rc)
+	}
+}
+
+func TestFirstRunAutoConfigAndShellSync(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("SHELL", "/bin/zsh")
+
+	// Symlinked .zshrc must preserve its symlink target (never replaced with regular file)
+	realZshrc := filepath.Join(fakeHome, "dotfiles_zshrc")
+	_ = os.WriteFile(realZshrc, []byte("export PATH=\"$HOME/.local/bin:$PATH\"\n"), 0o644)
+	zshrc := filepath.Join(fakeHome, ".zshrc")
+	if err := os.Symlink(realZshrc, zshrc); err != nil {
+		t.Fatalf("symlink failed: %v", err)
+	}
+	bashrc := filepath.Join(fakeHome, ".bashrc")
+	_ = os.WriteFile(bashrc, []byte("# existing user setting\nexport AGY_CLI_AUTO_COMPACT_OVERRIDE=\"80%\"\n"), 0o644)
+
+	v := vault.New(filepath.Join(fakeHome, ".local", "state", "agy-pro"))
+	configured, _, err := v.EnsureFirstRunConfig(fakeHome, false)
+	if err != nil || !configured {
+		t.Fatalf("expected first run to configure, configured=%v err=%v", configured, err)
+	}
+	st := v.LoadState()
+	if !st.FirstRunConfigured || st.AutoCompact != "80%" {
+		t.Fatalf("unexpected first-run state: %+v", st)
+	}
+	// Must NOT create unsolicited .zshenv or .profile when .zshrc/.bashrc already exist
+	if _, err := os.Stat(filepath.Join(fakeHome, ".zshenv")); !os.IsNotExist(err) {
+		t.Fatalf("must not create unsolicited .zshenv when .zshrc exists")
+	}
+	if info, err := os.Lstat(zshrc); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("expected .zshrc to remain a symlink after SyncShellAutoCompact")
+	}
+
+	zshData, _ := os.ReadFile(zshrc)
+	if !strings.Contains(string(zshData), `export AGY_CLI_AUTO_COMPACT_OVERRIDE="80%"`) {
+		t.Fatalf("expected .zshrc to receive default export, got:\n%s", string(zshData))
+	}
+	bashData, _ := os.ReadFile(bashrc)
+	if strings.Count(string(bashData), "AGY_CLI_AUTO_COMPACT_OVERRIDE") != 1 {
+		t.Fatalf("expected .bashrc not to duplicate existing export, got:\n%s", string(bashData))
+	}
+
+	// Second run must be a fast no-op
+	configured2, touched2, err2 := v.EnsureFirstRunConfig(fakeHome, false)
+	if err2 != nil || configured2 || len(touched2) != 0 {
+		t.Fatalf("expected second run no-op, got configured=%v touched=%v err=%v", configured2, touched2, err2)
+	}
+
+	// Explicit update modifies shell exports and persists to state.json
+	if _, _, err := v.SetAutoCompact("75%", fakeHome, false); err != nil {
+		t.Fatalf("SetAutoCompact 75%% failed: %v", err)
+	}
+	zshUpdated, _ := os.ReadFile(zshrc)
+	if !strings.Contains(string(zshUpdated), `export AGY_CLI_AUTO_COMPACT_OVERRIDE="75%"`) {
+		t.Fatalf("expected .zshrc updated to 75%%, got:\n%s", string(zshUpdated))
+	}
+
+	// Disabling removes export cleanly
+	if _, _, err := v.SetAutoCompact("off", fakeHome, false); err != nil {
+		t.Fatalf("SetAutoCompact off failed: %v", err)
+	}
+	zshOff, _ := os.ReadFile(zshrc)
+	if strings.Contains(string(zshOff), "AGY_CLI_AUTO_COMPACT_OVERRIDE") {
+		t.Fatalf("expected .zshrc export removed on off, got:\n%s", string(zshOff))
+	}
+}
+
+func TestAutoCompactEnvResolutionAndStepping(t *testing.T) {
+	if got := vault.StepAutoCompact("80%", +5); got != "85%" {
+		t.Fatalf("expected 85%%, got %s", got)
+	}
+	if got := vault.StepAutoCompact("95%", +5); got != "off" {
+		t.Fatalf("expected off after 95%%+5, got %s", got)
+	}
+	if got := vault.StepAutoCompact("off", -5); got != "95%" {
+		t.Fatalf("expected 95%% from off-5, got %s", got)
+	}
+	if got := vault.StepAutoCompact("30%", -5); got != "30%" {
+		t.Fatalf("expected clamp at 30%%, got %s", got)
+	}
+
+	t.Setenv(vault.AutoCompactEnvKey, "")
+	envDefault := vault.CleanNativeEnv("")
+	found := ""
+	foundForceFile := ""
+	for _, kv := range envDefault {
+		if strings.HasPrefix(kv, vault.AutoCompactEnvKey+"=") {
+			found = strings.TrimPrefix(kv, vault.AutoCompactEnvKey+"=")
+		}
+		if strings.HasPrefix(kv, vault.ForceFileTokenEnvKey+"=") {
+			foundForceFile = strings.TrimPrefix(kv, vault.ForceFileTokenEnvKey+"=")
+		}
+	}
+	if found != "80%" {
+		t.Fatalf("expected CleanNativeEnv default 80%%, got %q", found)
+	}
+	if foundForceFile != "1" {
+		t.Fatalf("expected CleanNativeEnv to set %s=1, got %q", vault.ForceFileTokenEnvKey, foundForceFile)
+	}
+
+	t.Setenv(vault.AutoCompactEnvKey, "75%")
+	val, forced := vault.ResolveAutoCompact(&vault.State{AutoCompact: "80%"}, "")
+	if !forced || val != "80%" {
+		t.Fatalf("expected state config 80%% to win over stale shell env 75%%, got val=%q forced=%v", val, forced)
+	}
+	envOff := vault.CleanNativeEnvWithCompact("", "", true)
+	for _, kv := range envOff {
+		if strings.HasPrefix(kv, vault.AutoCompactEnvKey+"=") {
+			t.Fatalf("expected %s stripped when off, found %s", vault.AutoCompactEnvKey, kv)
+		}
+	}
 }
 
 func TestTerminalGuardRestoresTermiosAndResetSeq(t *testing.T) {
@@ -221,24 +360,24 @@ func TestTerminalGuardRestoresTermiosAndResetSeq(t *testing.T) {
 	defer ttyFile.Close()
 
 	sfd := int(ttyFile.Fd())
-	before, err := unix.IoctlGetTermios(sfd, unix.TCGETS)
+	before, err := getTermios(sfd)
 	if err != nil {
-		t.Fatalf("TCGETS before failed: %v", err)
+		t.Fatalf("getTermios before failed: %v", err)
 	}
 
 	g := runner.NewTerminalGuard(sfd, ttyFile)
 	if err := g.EnterRaw(); err != nil {
 		t.Fatalf("EnterRaw failed: %v", err)
 	}
-	inside, _ := unix.IoctlGetTermios(sfd, unix.TCGETS)
+	inside, _ := getTermios(sfd)
 	if *inside == *before {
 		t.Fatal("expected termios to change in raw mode")
 	}
 	g.Restore()
 
-	after, err := unix.IoctlGetTermios(sfd, unix.TCGETS)
+	after, err := getTermios(sfd)
 	if err != nil {
-		t.Fatalf("TCGETS after failed: %v", err)
+		t.Fatalf("getTermios after failed: %v", err)
 	}
 	if *after != *before {
 		t.Fatalf("termios was not restored bit-for-bit! before=%+v after=%+v", *before, *after)

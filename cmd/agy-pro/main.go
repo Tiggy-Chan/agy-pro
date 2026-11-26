@@ -67,6 +67,7 @@ func renderHelp() string {
 	b.WriteString(cmdLine("agy-pro order <号1> ...", "自定义 drain 轮换顺序"))
 	b.WriteString(cmdLine("agy-pro remove <关键词>", "从号池移除指定账号"))
 	b.WriteString(cmdLine("agy-pro config reserve <N>", "设置低余量提前切号水位线（0–50，单位 %）"))
+	b.WriteString(cmdLine("agy-pro config auto-compact <V>", "设置默认 Auto-compact 阈值（默认 80%，支持 %/K/M/off）"))
 	b.WriteString(cmdLine("agy-pro clear-cooldown", "清空本地冷却与耗尽缓存"))
 	b.WriteString(cmdLine("agy-pro doctor", "环境与号池健康体检"))
 	b.WriteString("\n")
@@ -74,6 +75,7 @@ func renderHelp() string {
 	b.WriteString(ui.SHead.Render("启动选项") + "\n")
 	b.WriteString(cmdLine("--account <关键词>", "本次临时指定某个账号"))
 	b.WriteString(cmdLine("--reserve <0-50>", "本次覆盖低余量提前切号水位线"))
+	b.WriteString(cmdLine("--auto-compact <值>", "本次覆盖 Auto-compact 阈值（如 80%、800K、off）"))
 	b.WriteString(cmdLine("--refresh", "启动前先联网刷新当前主号额度"))
 	b.WriteString(cmdLine("--no-auto-switch", "关闭撞 5h/7d 墙自动秒切续跑"))
 	b.WriteString("\n")
@@ -434,6 +436,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	if st.ReservePct > 0 {
 		meta = append(meta, ui.SDim.Render(fmt.Sprintf("reserve %.0f%%", st.ReservePct)))
 	}
+	meta = append(meta, ui.SDim.Render("compact "+vault.DisplayAutoCompact(st)))
 	if oldestAt > 0 {
 		meta = append(meta, ui.SDim.Render("cache "+vault.FmtAge(oldestAt, now)))
 	}
@@ -559,10 +562,14 @@ func cmdUI(v *vault.Vault) int {
 func cmdConfig(v *vault.Vault, args []string) int {
 	st := v.LoadState()
 	if len(args) == 0 {
-		fmt.Printf("%s  %s  %s\n",
+		fmt.Printf("%s       %s  %s\n",
 			ui.SHeadDim.Render("reserve"),
 			ui.SBold.Render(fmt.Sprintf("%.0f%%", st.ReservePct)),
 			ui.SDim.Render("（启动新会话前若当前主号剩余 <= 水位线则自动提前切至满血备号；0 表示用尽再切）"))
+		fmt.Printf("%s  %s  %s\n",
+			ui.SHeadDim.Render("auto-compact"),
+			ui.SBold.Render(vault.DisplayAutoCompact(st)),
+			ui.SDim.Render("（默认传给 agy 的自动压缩阈值 AGY_CLI_AUTO_COMPACT_OVERRIDE；支持 80% / 800K / 700000 / off）"))
 		return 0
 	}
 	if args[0] == "reserve" && len(args) == 2 {
@@ -581,7 +588,33 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		}
 		return 0
 	}
-	fmt.Fprintln(os.Stderr, "用法: agy-pro config [reserve <0-50>]")
+	if args[0] == "auto-compact" && len(args) == 2 {
+		shellHome := ""
+		applyLaunchctl := false
+		if v.IsDefaultStateDir() {
+			shellHome = vault.HomeDir()
+			applyLaunchctl = true
+		}
+		norm, touched, err := v.SetAutoCompact(args[1], shellHome, applyLaunchctl)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", ui.SRedB.Render("error:"), err)
+			return 2
+		}
+		if norm == "off" {
+			fmt.Printf("%s 已关闭默认 Auto-compact 覆写 %s\n", ui.SGoodB.Render("✓"), ui.SDim.Render("（使用 agy 服务端默认值）"))
+		} else {
+			fmt.Printf("%s 已设置默认 Auto-compact: %s %s\n", ui.SGoodB.Render("✓"), ui.SGoodB.Render(norm), ui.SDim.Render("("+vault.AutoCompactEnvKey+"="+norm+")"))
+		}
+		if len(touched) > 0 {
+			names := make([]string, 0, len(touched))
+			for _, p := range touched {
+				names = append(names, filepath.Base(p))
+			}
+			fmt.Printf("  %s 已同步 Shell 配置: %s\n", ui.SDim.Render("·"), ui.SDim.Render(strings.Join(names, ", ")+"（新开终端或 source 后对原生 agy 生效）"))
+		}
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, "用法: agy-pro config [reserve <0-50> | auto-compact <80%|800K|700000|off>]")
 	return 2
 }
 
@@ -731,13 +764,26 @@ func cmdDoctor(v *vault.Vault) int {
 		okAll = false
 	}
 
-	env := vault.CleanNativeEnv("")
+	accounts := v.ListAccounts()
+	st := v.LoadState()
+	order := v.OrderedEmails(accounts, st)
+
+	compactVal, hasCompact := vault.ResolveAutoCompact(st, "")
+	env := vault.CleanNativeEnvWithCompact("", compactVal, hasCompact)
 	var leaked []string
 	var homeVal string
+	var compactEnv string
+	var forceFileEnv string
 	for _, kv := range env {
 		k, val, _ := strings.Cut(kv, "=")
 		if k == "HOME" {
 			homeVal = val
+		}
+		if k == vault.AutoCompactEnvKey {
+			compactEnv = val
+		}
+		if k == vault.ForceFileTokenEnvKey {
+			forceFileEnv = val
 		}
 		for _, bad := range vault.StripEnvKeys {
 			if k == bad {
@@ -751,13 +797,21 @@ func cmdDoctor(v *vault.Vault) int {
 		envLines = append(envLines, fmt.Sprintf("  %s 网络隔离    %s", ui.SRed.Render("✗"), ui.SRed.Render(fmt.Sprintf("泄漏: %v", leaked))))
 		okAll = false
 	}
+	if forceFileEnv == "1" {
+		envLines = append(envLines, fmt.Sprintf("  %s 凭据隔离    %s", ui.SGood.Render("✓"), ui.SDim.Render("强制文件 token（绕过系统 Keychain）")))
+	} else {
+		envLines = append(envLines, fmt.Sprintf("  %s 凭据隔离    %s", ui.SRed.Render("✗"), ui.SRed.Render("未设置 "+vault.ForceFileTokenEnvKey)))
+		okAll = false
+	}
 	envLines = append(envLines, fmt.Sprintf("  %s 真实 HOME   %s", ui.SGood.Render("✓"), ui.SDim.Render(homeVal)))
 	envLines = append(envLines, fmt.Sprintf("  %s 模型配置    %s", ui.SGood.Render("✓"), ui.SDim.Render("遵循 agy 原生设置与 /model 切换（零强制覆盖）")))
 
-	accounts := v.ListAccounts()
-	st := v.LoadState()
-	order := v.OrderedEmails(accounts, st)
 	envLines = append(envLines, fmt.Sprintf("  %s 提前切号    %s", ui.SGood.Render("✓"), ui.SDim.Render(fmt.Sprintf("水位线 %.0f%%", st.ReservePct))))
+	if compactEnv != "" {
+		envLines = append(envLines, fmt.Sprintf("  %s Auto-compact %s", ui.SGood.Render("✓"), ui.SDim.Render(compactEnv+" ("+vault.AutoCompactEnvKey+")")))
+	} else {
+		envLines = append(envLines, fmt.Sprintf("  %s Auto-compact %s", ui.SGood.Render("✓"), ui.SDim.Render("off（使用 agy 服务端默认）")))
+	}
 
 	var acctLines []string
 	if len(order) == 0 {
@@ -821,6 +875,8 @@ type runOptions struct {
 	resumeLast      bool
 	hasReserve      bool
 	reservePct      float64
+	autoCompact     string
+	flagErr         string
 }
 
 func parseRunFlags(argv []string) (runOptions, []string) {
@@ -839,16 +895,35 @@ func parseRunFlags(argv []string) (runOptions, []string) {
 		case strings.HasPrefix(a, "--account="):
 			opts.explicitAccount = strings.TrimPrefix(a, "--account=")
 		case a == "--reserve" && i+1 < len(argv):
-			if val, err := strconv.ParseFloat(strings.TrimSuffix(argv[i+1], "%"), 64); err == nil && val >= 0 && val <= 50 {
+			val, err := strconv.ParseFloat(strings.TrimSuffix(argv[i+1], "%"), 64)
+			if err != nil || val < 0 || val > 50 {
+				opts.flagErr = "reserve 需为 0 到 50 之间的数字（例如: --reserve 10）"
+			} else {
 				opts.hasReserve = true
 				opts.reservePct = val
 			}
 			i++
 		case strings.HasPrefix(a, "--reserve="):
 			raw := strings.TrimSuffix(strings.TrimPrefix(a, "--reserve="), "%")
-			if val, err := strconv.ParseFloat(raw, 64); err == nil && val >= 0 && val <= 50 {
+			val, err := strconv.ParseFloat(raw, 64)
+			if err != nil || val < 0 || val > 50 {
+				opts.flagErr = "reserve 需为 0 到 50 之间的数字（例如: --reserve 10）"
+			} else {
 				opts.hasReserve = true
 				opts.reservePct = val
+			}
+		case a == "--auto-compact" && i+1 < len(argv):
+			if norm, err := vault.NormalizeAutoCompact(argv[i+1]); err != nil {
+				opts.flagErr = err.Error()
+			} else {
+				opts.autoCompact = norm
+			}
+			i++
+		case strings.HasPrefix(a, "--auto-compact="):
+			if norm, err := vault.NormalizeAutoCompact(strings.TrimPrefix(a, "--auto-compact=")); err != nil {
+				opts.flagErr = err.Error()
+			} else {
+				opts.autoCompact = norm
 			}
 		case a == "--no-auto-switch":
 			opts.autoSwitch = false
@@ -871,6 +946,10 @@ func isPrintModeArgs(args []string) bool {
 }
 
 func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
+	if opts.flagErr != "" {
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("error:"), opts.flagErr)
+		return 2
+	}
 	accounts := v.ListAccounts()
 	st := v.LoadState()
 	order := v.OrderedEmails(accounts, st)
@@ -1024,11 +1103,14 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			fullArgs = runner.BuildAgyArgs(relaunchBase, logPath, convID, promptInteractive)
 		}
 
+		compactVal, hasCompact := vault.ResolveAutoCompact(st, opts.autoCompact)
+		agyEnv := vault.CleanNativeEnvWithCompact("", compactVal, hasCompact)
+
 		var res *runner.RunResult
 		if printMode {
-			res = runner.RunPrintOnce(agyBin, fullArgs, logPath, acct, opts.autoSwitch)
+			res = runner.RunPrintOnce(agyBin, fullArgs, logPath, acct, opts.autoSwitch, agyEnv)
 		} else {
-			res = runner.RunInteractiveOnce(agyBin, fullArgs, logPath, convID, acct, opts.autoSwitch)
+			res = runner.RunInteractiveOnce(agyBin, fullArgs, logPath, convID, acct, opts.autoSwitch, agyEnv)
 		}
 		v.SyncBackToken(acct)
 
@@ -1157,11 +1239,66 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	return 2
 }
 
+func shouldQuietFirstRun(argv []string) bool {
+	if isPrintModeArgs(argv) {
+		return true
+	}
+	for _, a := range argv {
+		if a == "--json" {
+			return true
+		}
+	}
+	return false
+}
+
+func isKnownSubcommand(s string) bool {
+	for _, c := range validSubcommands {
+		if c == s {
+			return true
+		}
+	}
+	return false
+}
+
+func bootstrapFirstRun(v *vault.Vault, argv []string, explicitDir bool) {
+	if len(argv) > 0 {
+		switch argv[0] {
+		case "-h", "--help", "help", "-V", "--version", "_verify", "_warm":
+			return
+		}
+		// Never mutate dotfiles/state on unknown/typo subcommands
+		if !strings.HasPrefix(argv[0], "-") && !isKnownSubcommand(argv[0]) {
+			return
+		}
+	}
+	shellHome := ""
+	applyLaunchctl := false
+	if !explicitDir && v.IsDefaultStateDir() {
+		shellHome = vault.HomeDir()
+		applyLaunchctl = true
+	}
+	configured, touched, err := v.EnsureFirstRunConfig(shellHome, applyLaunchctl)
+	if err != nil || !configured || shouldQuietFirstRun(argv) {
+		return
+	}
+	msg := "首次启动已自动配置默认 Auto-compact: " + vault.DefaultAutoCompact
+	if len(touched) > 0 {
+		names := make([]string, 0, len(touched))
+		for _, p := range touched {
+			names = append(names, filepath.Base(p))
+		}
+		msg += "（已写入 " + strings.Join(names, ", ") + "）"
+	}
+	fmt.Fprintf(os.Stderr, "%s %s %s\n", ui.Brand("agy-pro"), ui.SDim.Render("·"), ui.SGood.Render(msg))
+}
+
 func runCLI(argv []string, stateDir string) int {
+	explicitDir := stateDir != "" || os.Getenv("AGY_PRO_STATE_DIR") != ""
 	if stateDir == "" {
 		stateDir = os.Getenv("AGY_PRO_STATE_DIR")
 	}
 	v := vault.New(stateDir)
+	bootstrapFirstRun(v, argv, explicitDir)
 	if len(argv) == 0 {
 		return cmdRun(v, nil, runOptions{autoSwitch: true})
 	}
