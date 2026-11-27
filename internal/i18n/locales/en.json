@@ -61,6 +61,7 @@
   "ui.toast.removed": "✓ Removed account: %s",
   "ui.toast.remove_cancelled": "Removal cancelled",
   "ui.toast.usage_scanning": "Rescanning local token usage...",
+  "ui.toast.usage_rescanned": "✓ Token usage rescanned (%dms)",
   "ui.toast.sessions_refreshed": "✓ Open sessions refreshed",
   "ui.toast.scope_all": "Showing: all history (open sessions pinned on top)",
   "ui.toast.scope_open": "Showing: currently open sessions only",
@@ -129,6 +130,7 @@
   "usage.kpi.output": "  ·  Out ",
   "usage.kpi.thinking": " (think %.0f%%)",
   "usage.calls_short": "%d",
+  "usage.other_models": "other (+%d)",
 
   "picker.scope_cwd": "Current Dir",
   "picker.scope_all": "All Dirs",

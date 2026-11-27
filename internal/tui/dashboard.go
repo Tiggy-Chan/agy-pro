@@ -125,25 +125,20 @@ func (m *model) reloadSessions() {
 	if !m.showAllSess {
 		m.sessionsList = openList
 	} else {
-		allList, err := sessions.ListActiveFirst("", 60)
+		allList, err := sessions.ListActiveFirst("", 300)
 		if err != nil {
 			m.sessionsList = openList
 		} else {
-			for i := range allList {
-				if openSet[allList[i].ID] {
-					allList[i].Open = true
-				}
-			}
-			// Keep genuinely open sessions pinned first even in All-history view
-			var pinned, rest []sessions.Session
+			// Keep every genuinely open session (even brand-new 0-step windows) pinned first,
+			// followed by non-open historical conversations.
+			merged := make([]sessions.Session, 0, len(openList)+len(allList))
+			merged = append(merged, openList...)
 			for _, s := range allList {
-				if s.Open {
-					pinned = append(pinned, s)
-				} else {
-					rest = append(rest, s)
+				if !openSet[s.ID] {
+					merged = append(merged, s)
 				}
 			}
-			m.sessionsList = append(pinned, rest...)
+			m.sessionsList = merged
 		}
 	}
 	if m.sessCursor >= len(m.sessionsList) && len(m.sessionsList) > 0 {
@@ -309,10 +304,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.autoTried && m.usageRange == usage.RangeToday && msg.rep.Total.Calls == 0 {
 			m.usageRange = usage.Range7Days
 			m.usageLoading = true
-			return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
+			return m, scanUsageCmd(m.usageScanner, m.usageRange, true, false)
 		}
 		rep := msg.rep
 		m.usageReport = &rep
+		if msg.manual {
+			m.toast = i18n.T("ui.toast.usage_rescanned", rep.ElapsedMs)
+			m.toastStyle = ui.SGood
+		} else if m.toast == i18n.T("ui.toast.usage_scanning") {
+			m.toast = ""
+		}
 		if maxS := len(rep.BySession); maxS > 5 {
 			maxS = 5
 		} else if m.usageCursor >= maxS && maxS > 0 {
@@ -424,17 +425,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.usageRange = (m.usageRange + 2) % 3
 				m.usageCursor = 0
 				m.usageLoading = true
-				return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
+				m.toast = ""
+				return m, scanUsageCmd(m.usageScanner, m.usageRange, true, false)
 			case "right", "l", "t":
 				m.usageRange = (m.usageRange + 1) % 3
 				m.usageCursor = 0
 				m.usageLoading = true
-				return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
+				m.toast = ""
+				return m, scanUsageCmd(m.usageScanner, m.usageRange, true, false)
 			case "r":
 				m.usageLoading = true
 				m.toast = i18n.T("ui.toast.usage_scanning")
 				m.toastStyle = ui.SHeadDim
-				return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
+				return m, scanUsageCmd(m.usageScanner, m.usageRange, true, true)
 			case "up", "k":
 				if m.usageCursor > 0 {
 					m.usageCursor--
@@ -708,7 +711,7 @@ func (m model) switchTab(target int) (tea.Model, tea.Cmd) {
 	case tabUsage:
 		if m.usageReport == nil && !m.usageLoading {
 			m.usageLoading = true
-			return m, scanUsageCmd(m.usageScanner, m.usageRange, false)
+			return m, scanUsageCmd(m.usageScanner, m.usageRange, false, false)
 		}
 		return m, nil
 	default:

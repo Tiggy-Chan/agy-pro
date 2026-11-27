@@ -119,7 +119,9 @@ func List(dbPath string, limit int) ([]Session, error) {
 	rows, err := db.Query(`
 		SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris, status
 		FROM conversation_summaries
-		WHERE nesting_depth = 0 AND (parent_conversation_id IS NULL OR parent_conversation_id = '')
+		WHERE nesting_depth = 0
+		  AND (parent_conversation_id IS NULL OR parent_conversation_id = '')
+		  AND (step_count > 0 OR TRIM(COALESCE(title, '')) != '' OR TRIM(COALESCE(preview, '')) != '')
 		ORDER BY last_modified_time DESC
 		LIMIT ?
 	`, limit)
@@ -419,7 +421,7 @@ func CheckSchema(dbPath string) SchemaStatus {
 	}
 	st := SchemaStatus{Exists: true, OK: len(missing) == 0, Missing: missing}
 	if st.OK {
-		_ = db.QueryRow(`SELECT COUNT(*) FROM conversation_summaries WHERE nesting_depth = 0 AND (parent_conversation_id IS NULL OR parent_conversation_id = '')`).Scan(&st.TotalTopLevel)
+		_ = db.QueryRow(`SELECT COUNT(*) FROM conversation_summaries WHERE nesting_depth = 0 AND (parent_conversation_id IS NULL OR parent_conversation_id = '') AND (step_count > 0 OR TRIM(COALESCE(title, '')) != '' OR TRIM(COALESCE(preview, '')) != '')`).Scan(&st.TotalTopLevel)
 		if have["not_fully_idle"] {
 			_ = db.QueryRow(`SELECT COUNT(*) FROM conversation_summaries WHERE nesting_depth = 0 AND (parent_conversation_id IS NULL OR parent_conversation_id = '') AND (UPPER(status) IN ('CASCADE_RUN_STATUS_RUNNING','CASCADE_RUN_STATUS_BUSY') OR COALESCE(not_fully_idle,0) != 0)`).Scan(&st.RunningCount)
 		} else {

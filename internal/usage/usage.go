@@ -138,6 +138,16 @@ func NewScanner(convDir, summaryDB string) *Scanner {
 	}
 }
 
+// ClearCache drops cached per-DB parse results so the next Scan re-reads every DB from disk.
+func (s *Scanner) ClearCache() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.cache = map[string]fileCacheEntry{}
+	s.mu.Unlock()
+}
+
 // FmtTokens formats a token count compactly (e.g. 1.45B, 72.8M, 630.6K, 919).
 func FmtTokens(n int64) string {
 	switch {

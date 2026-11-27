@@ -88,6 +88,17 @@ func TestListReadsTopLevelSessionsReadOnly(t *testing.T) {
 			depth:   1,
 			parent:  "00000000-0000-4000-8000-000000000001",
 		},
+		{
+			id:      "00000000-0000-4000-8000-000000000004",
+			title:   "",
+			preview: "",
+			steps:   0,
+			mod:     "0001-01-01 00:00:00+00:00",
+			ws:      `["file:///tmp/%E6%96%87%E6%A1%A3/demo"]`,
+			status:  "CASCADE_RUN_STATUS_IDLE",
+			depth:   0,
+			parent:  "",
+		},
 	}
 	for _, r := range inserts {
 		if _, err := db.Exec(

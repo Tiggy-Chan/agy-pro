@@ -61,6 +61,7 @@
   "ui.toast.removed": "✓ 已移除账号: %s",
   "ui.toast.remove_cancelled": "已取消移除",
   "ui.toast.usage_scanning": "正在重新统计本地 Token 用量...",
+  "ui.toast.usage_rescanned": "✓ 已重新统计本地 Token 用量 (%dms)",
   "ui.toast.sessions_refreshed": "✓ 已刷新活跃会话",
   "ui.toast.scope_all": "已切换为：含历史会话（打开中置顶）",
   "ui.toast.scope_open": "已切换为：仅显示当前真实打开的会话",
@@ -129,6 +130,7 @@
   "usage.kpi.output": "  ·  输出 ",
   "usage.kpi.thinking": " (思考 %.0f%%)",
   "usage.calls_short": "%d次",
+  "usage.other_models": "其他 (+%d)",
 
   "picker.scope_cwd": "当前目录",
   "picker.scope_all": "全部目录",

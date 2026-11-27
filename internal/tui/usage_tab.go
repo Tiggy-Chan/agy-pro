@@ -16,12 +16,16 @@ import (
 type usageLoadedMsg struct {
 	rep       usage.Report
 	autoTried bool
+	manual    bool
 }
 
-func scanUsageCmd(sc *usage.Scanner, rk usage.RangeKind, autoTried bool) tea.Cmd {
+func scanUsageCmd(sc *usage.Scanner, rk usage.RangeKind, autoTried, forceRescan bool) tea.Cmd {
 	return func() tea.Msg {
+		if forceRescan && sc != nil {
+			sc.ClearCache()
+		}
 		rep := sc.Scan(rk, time.Now())
-		return usageLoadedMsg{rep: rep, autoTried: autoTried}
+		return usageLoadedMsg{rep: rep, autoTried: autoTried, manual: forceRescan}
 	}
 }
 
@@ -87,12 +91,26 @@ func (m model) renderUsageBody(innerW int) string {
 	b.WriteString("  " + kpi2 + "\n")
 	b.WriteString(ui.Hairline(innerW) + "\n")
 
-	// ---- By Model Table (Top 5) ----
-	maxModels := 5
-	if len(rep.ByModel) < maxModels {
-		maxModels = len(rep.ByModel)
+	// ---- By Model Table (up to 6 rows; roll up tail into "other (+N)" so sums always equal KPI total) ----
+	displayModels := rep.ByModel
+	if len(rep.ByModel) > 6 {
+		displayModels = make([]usage.ModelRow, 0, 6)
+		displayModels = append(displayModels, rep.ByModel[:5]...)
+		var rest usage.BucketStats
+		for _, mr := range rep.ByModel[5:] {
+			rest.Calls += mr.Stats.Calls
+			rest.Input += mr.Stats.Input
+			rest.CacheRead += mr.Stats.CacheRead
+			rest.CacheWrite += mr.Stats.CacheWrite
+			rest.Output += mr.Stats.Output
+			rest.Thinking += mr.Stats.Thinking
+		}
+		displayModels = append(displayModels, usage.ModelRow{
+			Model: i18n.T("usage.other_models", len(rep.ByModel)-5),
+			Stats: rest,
+		})
 	}
-	compact := innerW < 84
+	compact := innerW < 88
 	barW := 6
 	if compact {
 		barW = 4
@@ -103,37 +121,37 @@ func (m model) renderUsageBody(innerW int) string {
 	}
 
 	var mRows [][]string
-	for i := 0; i < maxModels; i++ {
-		mr := rep.ByModel[i]
+	for i, mr := range displayModels {
 		share := float64(mr.Stats.TotalTokens()) * 100.0 / grandTotal
-		nameCell := ui.SHeadDim.Render(ui.Truncate(mr.Model, 24))
+		nameCell := ui.SHeadDim.Render(ui.Truncate(mr.Model, 22))
 		if i == 0 {
-			nameCell = ui.SBold.Render(ui.Truncate(mr.Model, 24))
+			nameCell = ui.SBold.Render(ui.Truncate(mr.Model, 22))
 		}
 		callsCell := ui.SDim.Render(fmt.Sprintf("%d", mr.Stats.Calls))
+		totCell := ui.SBold.Render(usage.FmtTokens(mr.Stats.TotalTokens()))
 		inCell := usage.FmtTokens(mr.Stats.Input)
 		crCell := ui.SDim.Render(usage.FmtTokens(mr.Stats.CacheRead))
 		hitCell := ui.SGood.Render(fmt.Sprintf("%.0f%%", mr.Stats.CacheHitPct()))
 		outCell := usage.FmtTokens(mr.Stats.Output)
 		shareCell := renderShareBar(share, barW)
 		if compact {
-			mRows = append(mRows, []string{nameCell, callsCell, inCell, outCell, shareCell})
+			mRows = append(mRows, []string{nameCell, callsCell, totCell, outCell, shareCell})
 		} else {
-			mRows = append(mRows, []string{nameCell, callsCell, inCell, crCell, hitCell, outCell, shareCell})
+			mRows = append(mRows, []string{nameCell, callsCell, totCell, inCell, crCell, hitCell, outCell, shareCell})
 		}
 	}
 	if compact {
 		b.WriteString(ui.RenderTable(
-			[]string{"MODEL", "CALLS", "INPUT", "OUTPUT", "SHARE"},
+			[]string{"MODEL", "CALLS", "TOTAL", "OUTPUT", "SHARE"},
 			mRows,
 			[]ui.Align{ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignLeft},
 			innerW, 0,
 		))
 	} else {
 		b.WriteString(ui.RenderTable(
-			[]string{"MODEL", "CALLS", "INPUT", "CACHE", "HIT%", "OUTPUT", "SHARE"},
+			[]string{"MODEL", "CALLS", "TOTAL", "INPUT", "CACHE", "HIT%", "OUTPUT", "SHARE"},
 			mRows,
-			[]ui.Align{ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignLeft},
+			[]ui.Align{ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignLeft},
 			innerW, 0,
 		))
 	}

@@ -285,6 +285,36 @@ func TestDashboardUsageTabAndLanguageKey(t *testing.T) {
 		t.Fatalf("expected g to switch TUI live from en -> zh, got lang=%q view:\n%s", i18n.Lang(), m.View())
 	}
 
+	// Press 'r' in Usage tab -> manual rescan completes and replaces scanning toast (never stuck)
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = next.(model)
+	if !m.usageLoading || cmd == nil || !strings.Contains(m.toast, "正在重新统计") {
+		t.Fatalf("expected r to start rescan toast, got loading=%v toast=%q", m.usageLoading, m.toast)
+	}
+	next, _ = m.Update(usageLoadedMsg{rep: rep, autoTried: true, manual: true})
+	m = next.(model)
+	if m.usageLoading || !strings.Contains(m.toast, "✓ 已重新统计") {
+		t.Fatalf("expected manual usageLoadedMsg to clear loading and update toast, got loading=%v toast=%q", m.usageLoading, m.toast)
+	}
+
+	// Verify >6 models rolls up tail into "其他 (+2)" and renders TOTAL column
+	repMany := rep
+	repMany.ByModel = []usage.ModelRow{
+		{Model: "m1", Stats: usage.BucketStats{Calls: 10, Input: 1000, CacheRead: 9000, Output: 500}},
+		{Model: "m2", Stats: usage.BucketStats{Calls: 8, Input: 800, CacheRead: 7200, Output: 400}},
+		{Model: "m3", Stats: usage.BucketStats{Calls: 6, Input: 600, CacheRead: 5400, Output: 300}},
+		{Model: "m4", Stats: usage.BucketStats{Calls: 4, Input: 400, CacheRead: 3600, Output: 200}},
+		{Model: "m5", Stats: usage.BucketStats{Calls: 2, Input: 200, CacheRead: 1800, Output: 100}},
+		{Model: "m6", Stats: usage.BucketStats{Calls: 1, Input: 100, CacheRead: 900, Output: 50}},
+		{Model: "m7", Stats: usage.BucketStats{Calls: 1, Input: 100, CacheRead: 900, Output: 50}},
+	}
+	next, _ = m.Update(usageLoadedMsg{rep: repMany, autoTried: true})
+	m = next.(model)
+	viewMany := m.View()
+	if !strings.Contains(viewMany, "TOTAL") || !strings.Contains(viewMany, "其他 (+2)") {
+		t.Fatalf("expected TOTAL column and '其他 (+2)' rollup row, got:\n%s", viewMany)
+	}
+
 	// Enter resumes top-burning session
 	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(model)
