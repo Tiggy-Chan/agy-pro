@@ -15,7 +15,7 @@ func TestTabTitleSyncLifecycleSpinnerAndRename(t *testing.T) {
 	s.Start()
 
 	got := buf.String()
-	if !strings.Contains(got, "\x1b[22;0t") || !strings.Contains(got, "\x1b]0;✳ my-project\x07") {
+	if !strings.Contains(got, "\x1b[22;0t") || !strings.Contains(got, "\x1b]0;✦ my-project\x07") {
 		t.Fatalf("expected title push + idle fallback title, got %q", got)
 	}
 
@@ -38,11 +38,11 @@ func TestTabTitleSyncLifecycleSpinnerAndRename(t *testing.T) {
 		t.Fatalf("expected second spinner frame, got %q", buf.String())
 	}
 
-	// Completing turn settles back to ✳
+	// Completing turn settles back to ✦
 	buf.Reset()
 	s.Update("测试会话", "", false)
-	if buf.String() != "\x1b]0;✳ 测试会话\x07" {
-		t.Fatalf("expected idle asterisk on completion, got %q", buf.String())
+	if buf.String() != "\x1b]0;✦ 测试会话\x07" {
+		t.Fatalf("expected idle four-point star on completion, got %q", buf.String())
 	}
 
 	// Failover displays ↻ indicator
@@ -68,7 +68,7 @@ func TestTabTitleCustomOverrideYieldsOnRenameAndSanitizes(t *testing.T) {
 	// Control chars (ESC/BEL/newline/C1 0x8d) must be stripped
 	s := NewTabTitleSync(&buf, true, "测试\x1b]0;evil\x07\x8d\n标题", "fallback")
 	s.Start()
-	if !strings.Contains(buf.String(), "\x1b]0;✳ 测试]0;evil 标题\x07") {
+	if !strings.Contains(buf.String(), "\x1b]0;✦ 测试]0;evil 标题\x07") {
 		t.Fatalf("expected sanitized custom title, got %q", buf.String())
 	}
 
@@ -82,7 +82,7 @@ func TestTabTitleCustomOverrideYieldsOnRenameAndSanitizes(t *testing.T) {
 	// When user runs `/rename 新名字` inside agy, DB title changes -> live title takes over!
 	buf.Reset()
 	s.Update("新名字", "", false)
-	if buf.String() != "\x1b]0;✳ 新名字\x07" {
+	if buf.String() != "\x1b]0;✦ 新名字\x07" {
 		t.Fatalf("expected /rename DB change to override launch --title, got %q", buf.String())
 	}
 }

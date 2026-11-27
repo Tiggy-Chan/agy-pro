@@ -19,7 +19,7 @@ const (
 var tabSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 const (
-	tabIdlePrefix      = "✳"
+	tabIdlePrefix      = "✦"
 	tabSwitchingPrefix = "↻"
 	tabTitleMaxCols    = 28
 )
