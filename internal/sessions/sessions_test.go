@@ -124,4 +124,12 @@ func TestListReadsTopLevelSessionsReadOnly(t *testing.T) {
 	if rel := FmtRelativeTime(list[0].ModifiedAt, now); rel != "6m前" {
 		t.Fatalf("expected 6m前, got %q", rel)
 	}
+
+	// Subagent ID must resolve back to its top-level parent conversation ID
+	if root := ResolveRootID(dbPath, "00000000-0000-4000-8000-000000000003"); root != "00000000-0000-4000-8000-000000000001" {
+		t.Fatalf("expected subagent to resolve to parent 00000000-...-0001, got %q", root)
+	}
+	if root := ResolveRootID(dbPath, "00000000-0000-4000-8000-000000000001"); root != "00000000-0000-4000-8000-000000000001" {
+		t.Fatalf("expected top-level session to stay unchanged, got %q", root)
+	}
 }

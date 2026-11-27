@@ -165,12 +165,29 @@ func TestParsersAndVault(t *testing.T) {
 	tmp := t.TempDir()
 	logPath := filepath.Join(tmp, "session.log")
 	_ = os.WriteFile(logPath, []byte(
-		"I1125 Resuming conversation 00000000-0000-4000-8000-000000000001\n"+
-			"I1125 applyAuthResult: email=alice@example.com, authMethod=consumer\n",
+		"I1125 10:00:00.000000 1 common.go:496] Resuming conversation 00000000-0000-4000-8000-000000000001\n"+
+			"I1125 10:00:01.000000 1 conversation_manager.go:1282] Streaming conversation 00000000-0000-4000-8000-000000000001\n"+
+			"I1125 10:01:00.000000 2 server.go:1269] Created conversation 11111111-1111-4111-8111-111111111111 (backend=BACKEND_TYPE_UNSPECIFIED)\n"+
+			"I1125 10:01:00.000001 2 server.go:1287] Starting conversation update stream for 11111111-1111-4111-8111-111111111111\n"+
+			"I1125 10:01:20.000000 2 btw_manager.go:617] btw side question 11111111-1111-4111-8111-111111111111 ended after 20s and 2 tool calls: answered\n"+
+			"I1125 10:01:25.000000 2 rpcs_backend.go:514] CancelCascadeInvocation requested: cascade_id=\"11111111-1111-4111-8111-111111111111\"\n"+
+			"I1125 10:02:00.000000 3 applyAuthResult: email=alice@example.com, authMethod=consumer\n",
 	), 0o600)
 	_, cid, em, ql := runner.ScanLog(logPath, 0)
 	if cid != "00000000-0000-4000-8000-000000000001" || em != "alice@example.com" || ql != "" {
-		t.Fatalf("unexpected log scan: cid=%q em=%q ql=%q", cid, em, ql)
+		t.Fatalf("unexpected log scan (must ignore /btw and server.go streams): cid=%q em=%q ql=%q", cid, em, ql)
+	}
+
+	// Switching foreground session via conversation_manager.go MUST still update cid
+	logPath2 := filepath.Join(tmp, "session_switch.log")
+	_ = os.WriteFile(logPath2, []byte(
+		"I1125 10:00:01.000000 1 conversation_manager.go:1282] Streaming conversation 00000000-0000-4000-8000-000000000001\n"+
+			"I1125 10:05:00.000000 1 conversation_manager.go:1282] Streaming conversation 00000000-0000-4000-8000-000000000002\n"+
+			"I1125 10:06:00.000000 2 server.go:1287] Starting conversation update stream for 99999999-9999-4999-8999-999999999999\n",
+	), 0o600)
+	_, cid2, _, _ := runner.ScanLog(logPath2, 0)
+	if cid2 != "00000000-0000-4000-8000-000000000002" {
+		t.Fatalf("expected foreground switch to 0002 ignoring server stream 9999, got %q", cid2)
 	}
 
 	tokPath := filepath.Join(tmp, "antigravity-oauth-token")

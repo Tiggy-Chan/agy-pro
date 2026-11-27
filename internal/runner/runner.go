@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
+	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
@@ -42,9 +44,14 @@ const uuidPat = `([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`
 
 var (
 	ansiRe = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])`)
+	// Match ONLY foreground CLI session manager lines — NEVER server.go update streams,
+	// GetConversationDetail, Created conversation, or cascade_id="..." (which fire for ephemeral
+	// /btw side questions, subagents, swarm workers, and cancelled background cascades!).
 	convLogRes = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(?:Resuming|Streaming|Starting conversation update stream for|GetConversationDetail: found|Created(?: new)?)\s+conversation\s+` + uuidPat),
-		regexp.MustCompile(`(?i)cascade_id="` + uuidPat + `"`),
+		regexp.MustCompile(`(?i)common\.go:\d+\]\s+Resuming conversation\s+` + uuidPat),
+		regexp.MustCompile(`(?i)conversation_manager\.go:\d+\]\s+(?:Streaming|Forwarding user message to)\s+conversation\s+` + uuidPat),
+		regexp.MustCompile(`(?i)send_user_message_manager\.go:\d+\]\s+Forwarding mid-turn user message immediately to conversation\s+` + uuidPat),
+		regexp.MustCompile(`(?i)manager\.go:\d+\]\s+Full redraw completed \(RerenderAll\) for conversation\s+` + uuidPat),
 	}
 	uuidPrefixRe = regexp.MustCompile(`^` + uuidPat)
 	authEmailRe  = regexp.MustCompile(`applyAuthResult:\s+email=([^\s,]+)`)
@@ -194,6 +201,23 @@ func ScanLog(logPath string, offset int64) (int64, string, string, string) {
 	return newOff, convID, authEmail, quotaLine
 }
 
+// ConversationExists checks whether convID has an actual persisted local conversation store
+// (.db or legacy .pb) under ~/.gemini/antigravity-cli/conversations/.
+// Ephemeral /btw side questions never create a persisted store and return false.
+func ConversationExists(convID string) bool {
+	id := strings.TrimSpace(convID)
+	if id == "" || !uuidPrefixRe.MatchString(id) || len(id) != 36 {
+		return false
+	}
+	dir := vault.ConversationsDir()
+	for _, ext := range []string{".db", ".pb"} {
+		if info, err := os.Stat(filepath.Join(dir, id+ext)); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 func FindNewestConversationSince(start time.Time) string {
 	entries, err := os.ReadDir(vault.ConversationsDir())
 	if err != nil {
@@ -203,8 +227,17 @@ func FindNewestConversationSince(start time.Time) string {
 	var bestTime time.Time
 	var bestID string
 	for _, e := range entries {
-		m := uuidPrefixRe.FindStringSubmatch(e.Name())
+		name := e.Name()
+		if !strings.HasSuffix(name, ".db") && !strings.HasSuffix(name, ".pb") {
+			continue
+		}
+		m := uuidPrefixRe.FindStringSubmatch(name)
 		if m == nil {
+			continue
+		}
+		// Skip subagent conversations (ResolveRootID returns a different parent UUID)
+		candID := m[1]
+		if root := sessions.ResolveRootID("", candID); root != "" && root != candID {
 			continue
 		}
 		info, err := e.Info()
@@ -214,7 +247,7 @@ func FindNewestConversationSince(start time.Time) string {
 		mt := info.ModTime()
 		if !mt.Before(cutoff) && mt.After(bestTime) {
 			bestTime = mt
-			bestID = m[1]
+			bestID = candID
 		}
 	}
 	return bestID

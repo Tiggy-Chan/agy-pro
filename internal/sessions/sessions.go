@@ -230,3 +230,46 @@ func FmtRelativeTime(t time.Time, now time.Time) string {
 		return t.Local().Format("01-02")
 	}
 }
+
+// ResolveRootID climbs parent_conversation_id links in conversation_summaries.db (strictly read-only)
+// so a subagent conversation ID is always normalized back to its top-level user conversation ID.
+// If the database or row does not exist, convID is returned unchanged.
+func ResolveRootID(dbPath, convID string) string {
+	id := strings.TrimSpace(convID)
+	if id == "" {
+		return ""
+	}
+	if dbPath == "" {
+		dbPath = DefaultDBPath()
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		return id
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)", dbPath)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return id
+	}
+	defer db.Close()
+
+	seen := map[string]bool{id: true}
+	cur := id
+	for step := 0; step < 8; step++ {
+		var parent string
+		var depth int
+		err := db.QueryRow(
+			`SELECT COALESCE(parent_conversation_id, ''), COALESCE(nesting_depth, 0) FROM conversation_summaries WHERE conversation_id = ?`,
+			cur,
+		).Scan(&parent, &depth)
+		if err != nil || depth <= 0 || strings.TrimSpace(parent) == "" {
+			break
+		}
+		parent = strings.TrimSpace(parent)
+		if seen[parent] {
+			break
+		}
+		seen[parent] = true
+		cur = parent
+	}
+	return cur
+}

@@ -1130,11 +1130,16 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		v.SyncBackToken(acct)
 
 		if res.ConvID != "" {
-			convID = res.ConvID
-			savedConv := convID
-			_ = v.UpdateState(func(s *vault.State) {
-				s.LastConv[cwd] = savedConv
-			})
+			resolved := sessions.ResolveRootID("", res.ConvID)
+			if resolved != "" {
+				convID = resolved
+			}
+			if convID != "" && runner.ConversationExists(convID) {
+				savedConv := convID
+				_ = v.UpdateState(func(s *vault.State) {
+					s.LastConv[cwd] = savedConv
+				})
+			}
 		}
 
 		if !res.QuotaHit {
@@ -1229,6 +1234,23 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			s.Active = nextEmail
 			s.Order = order
 		})
+
+		if !printMode {
+			if convID != "" {
+				convID = sessions.ResolveRootID("", convID)
+			}
+			if convID == "" || !runner.ConversationExists(convID) {
+				fmt.Fprintf(os.Stderr, "\n%s %s %s %s %s\n",
+					ui.Brand("agy-pro"),
+					ui.SAmber.Render("↻"),
+					ui.SDim.Render(oldEmail+" "+kindLabel),
+					ui.SAccentB.Render("→"),
+					ui.SGoodB.Render(nextEmail))
+				fmt.Fprintf(os.Stderr, "%s 未定位到可安全续接的本地会话文件，已切至新主号并停止自动续跑（避免误开空对话）。请运行 %s 选择原会话继续。\n",
+					ui.SAmberB.Render("!"), ui.SHeadDim.Render("agy-pro resume"))
+				return 2
+			}
+		}
 
 		resumeNote := ""
 		if convID != "" {
