@@ -771,6 +771,7 @@ func cmdDoctor(v *vault.Vault) int {
 	var homeVal string
 	var compactEnv string
 	var forceFileEnv string
+	var forceOSC8Env string
 	for _, kv := range env {
 		k, val, _ := strings.Cut(kv, "=")
 		if k == "HOME" {
@@ -781,6 +782,9 @@ func cmdDoctor(v *vault.Vault) int {
 		}
 		if k == vault.ForceFileTokenEnvKey {
 			forceFileEnv = val
+		}
+		if k == vault.ForceOSC8EnvKey {
+			forceOSC8Env = val
 		}
 		for _, bad := range vault.StripEnvKeys {
 			if k == bad {
@@ -799,6 +803,11 @@ func cmdDoctor(v *vault.Vault) int {
 	} else {
 		envLines = append(envLines, fmt.Sprintf("  %s 凭据隔离    %s", ui.SRed.Render("✗"), ui.SRed.Render("未设置 "+vault.ForceFileTokenEnvKey)))
 		okAll = false
+	}
+	if forceOSC8Env == "0" {
+		envLines = append(envLines, fmt.Sprintf("  %s 重影防护    %s", ui.SGood.Render("✓"), ui.SDim.Render("关闭 OSC-8 ("+vault.ForceOSC8EnvKey+"=0)")))
+	} else {
+		envLines = append(envLines, fmt.Sprintf("  %s 重影防护    %s", ui.SAmber.Render("!"), ui.SDim.Render("用户覆写 ("+vault.ForceOSC8EnvKey+"="+forceOSC8Env+")")))
 	}
 	envLines = append(envLines, fmt.Sprintf("  %s 真实 HOME   %s", ui.SGood.Render("✓"), ui.SDim.Render(homeVal)))
 	envLines = append(envLines, fmt.Sprintf("  %s 模型配置    %s", ui.SGood.Render("✓"), ui.SDim.Render("遵循 agy 原生设置与 /model 切换（零强制覆盖）")))

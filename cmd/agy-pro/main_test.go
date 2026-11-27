@@ -415,15 +415,23 @@ func TestAutoCompactEnvResolutionAndStepping(t *testing.T) {
 		t.Cleanup(func() { _ = os.Setenv("SSH_CONNECTION", origSSH) })
 		_ = os.Unsetenv("SSH_CONNECTION")
 	}
+	if origOSC8, hadOSC8 := os.LookupEnv(vault.ForceOSC8EnvKey); hadOSC8 {
+		t.Cleanup(func() { _ = os.Setenv(vault.ForceOSC8EnvKey, origOSC8) })
+		_ = os.Unsetenv(vault.ForceOSC8EnvKey)
+	}
 	envDefault := vault.CleanNativeEnv("")
 	found := ""
 	foundForceFile := ""
+	foundOSC8 := ""
 	for _, kv := range envDefault {
 		if strings.HasPrefix(kv, vault.AutoCompactEnvKey+"=") {
 			found = strings.TrimPrefix(kv, vault.AutoCompactEnvKey+"=")
 		}
 		if strings.HasPrefix(kv, vault.ForceFileTokenEnvKey+"=") {
 			foundForceFile = strings.TrimPrefix(kv, vault.ForceFileTokenEnvKey+"=")
+		}
+		if strings.HasPrefix(kv, vault.ForceOSC8EnvKey+"=") {
+			foundOSC8 = strings.TrimPrefix(kv, vault.ForceOSC8EnvKey+"=")
 		}
 		if strings.HasPrefix(kv, "SSH_CONNECTION=") {
 			t.Fatalf("CleanNativeEnv must NOT spoof SSH_CONNECTION when unset, found %q", kv)
@@ -434,6 +442,21 @@ func TestAutoCompactEnvResolutionAndStepping(t *testing.T) {
 	}
 	if foundForceFile != "1" {
 		t.Fatalf("expected CleanNativeEnv to set %s=1, got %q", vault.ForceFileTokenEnvKey, foundForceFile)
+	}
+	if foundOSC8 != "0" {
+		t.Fatalf("expected CleanNativeEnv default %s=0 to prevent CJK OSC-8 C1 ghosting, got %q", vault.ForceOSC8EnvKey, foundOSC8)
+	}
+
+	// Explicit caller override AGY_CLI_FORCE_OSC8=1 must be respected
+	t.Setenv(vault.ForceOSC8EnvKey, "1")
+	osc8Override := ""
+	for _, kv := range vault.CleanNativeEnv("") {
+		if strings.HasPrefix(kv, vault.ForceOSC8EnvKey+"=") {
+			osc8Override = strings.TrimPrefix(kv, vault.ForceOSC8EnvKey+"=")
+		}
+	}
+	if osc8Override != "1" {
+		t.Fatalf("expected explicit %s=1 preserved, got %q", vault.ForceOSC8EnvKey, osc8Override)
 	}
 
 	t.Setenv(vault.AutoCompactEnvKey, "75%")

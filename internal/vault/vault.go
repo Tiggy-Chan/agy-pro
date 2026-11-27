@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	Version               = "0.1.0-dev"
-	DefaultAutoCompact    = "80%"
-	AutoCompactEnvKey     = "AGY_CLI_AUTO_COMPACT_OVERRIDE"
-	ForceFileTokenEnvKey  = "AGY_CLI_FORCE_FILE_TOKEN_STORAGE"
+	Version              = "0.1.0-dev"
+	DefaultAutoCompact   = "80%"
+	AutoCompactEnvKey    = "AGY_CLI_AUTO_COMPACT_OVERRIDE"
+	ForceFileTokenEnvKey = "AGY_CLI_FORCE_FILE_TOKEN_STORAGE"
+	ForceOSC8EnvKey      = "AGY_CLI_FORCE_OSC8"
 )
 
 var StripEnvKeys = []string{
@@ -341,8 +342,9 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 	}
 
 	orig := os.Environ()
-	out := make([]string, 0, len(orig)+4)
+	out := make([]string, 0, len(orig)+5)
 	hasCompactEnv := false
+	hasOSC8Env := false
 	for _, kv := range orig {
 		k, val, ok := strings.Cut(kv, "=")
 		if !ok {
@@ -354,11 +356,22 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 		if k == AutoCompactEnvKey && strings.TrimSpace(val) != "" {
 			hasCompactEnv = true
 		}
+		if k == ForceOSC8EnvKey && strings.TrimSpace(val) != "" {
+			hasOSC8Env = true
+		}
 		out = append(out, kv)
 	}
 	// Use official AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1 instead of spoofing SSH_CONNECTION
 	// so agy keeps native local terminal detection (ssh=false) while isolating tokens cleanly.
 	out = append(out, ForceFileTokenEnvKey+"=1")
+	// Default AGY_CLI_FORCE_OSC8=0 unless caller explicitly overrides it:
+	// native agy emits un-percent-encoded UTF-8 inside OSC-8 file:// hyperlinks, so CJK chars
+	// whose UTF-8 bytes contain 0x9C (ST) + 0x8D (C1 Reverse Index, e.g. '服' = E6 9C 8D)
+	// prematurely terminate the link and jump the terminal cursor up a row, causing severe
+	// double/triple-line ghosting on every subsequent inline redraw.
+	if !hasOSC8Env {
+		out = append(out, ForceOSC8EnvKey+"=0")
+	}
 	if overrideHome != "" {
 		out = append(out, "HOME="+overrideHome)
 	}
