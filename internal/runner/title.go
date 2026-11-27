@@ -173,6 +173,16 @@ func (s *TabTitleSync) SetSwitching() {
 	s.emitIfChanged()
 }
 
+func (s *TabTitleSync) CurrentTitle() string {
+	if s == nil {
+		return ""
+	}
+	if s.currentTitle != "" {
+		return s.currentTitle
+	}
+	return s.fallbackTitle
+}
+
 func (s *TabTitleSync) formatted() string {
 	title := s.currentTitle
 	if title == "" {

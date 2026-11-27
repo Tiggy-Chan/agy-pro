@@ -151,4 +151,20 @@ func TestListReadsTopLevelSessionsReadOnly(t *testing.T) {
 	if !ok2 || meta2.Title != "测试" || meta2.Running {
 		t.Fatalf("expected MetaReader to observe /rename '测试' and IDLE, got ok=%v meta=%+v", ok2, meta2)
 	}
+
+	// CheckSchema validates required upstream columns and counts
+	st := CheckSchema(dbPath)
+	if !st.Exists || !st.OK || st.TotalTopLevel != 2 || st.RunningCount != 0 {
+		t.Fatalf("unexpected CheckSchema result: %+v", st)
+	}
+
+	// ListActiveFirst pins running sessions to the top
+	wdb2, _ := sql.Open("sqlite", dbPath)
+	_, _ = wdb2.Exec(`UPDATE conversation_summaries SET status = 'CASCADE_RUN_STATUS_RUNNING' WHERE conversation_id = ?`, "00000000-0000-4000-8000-000000000002")
+	_ = wdb2.Close()
+
+	activeList, err := ListActiveFirst(dbPath, 10)
+	if err != nil || len(activeList) != 2 || activeList[0].ID != "00000000-0000-4000-8000-000000000002" || !activeList[0].Running {
+		t.Fatalf("expected running session pinned first, got err=%v list=%+v", err, activeList)
+	}
 }

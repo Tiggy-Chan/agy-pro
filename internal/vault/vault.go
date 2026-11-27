@@ -71,6 +71,7 @@ type State struct {
 	Order              []string             `json:"order"`
 	ReservePct         float64              `json:"reserve_pct,omitempty"`
 	AutoCompact        string               `json:"auto_compact,omitempty"`
+	NotifyDisabled     bool                 `json:"notify_disabled,omitempty"`
 	FirstRunConfigured bool                 `json:"first_run_configured,omitempty"`
 	Cooldowns          map[string]*Cooldown `json:"cooldowns"`
 	Quotas             map[string]*Quota    `json:"quotas"`
@@ -86,11 +87,12 @@ type TokenMeta struct {
 }
 
 type Vault struct {
-	StateDir    string
-	AccountsDir string
-	LogsDir     string
-	StateFile   string
-	LockFile    string
+	StateDir       string
+	AccountsDir    string
+	LogsDir        string
+	StateFile      string
+	LockFile       string
+	LaunchLockFile string
 }
 
 func HomeDir() string {
@@ -129,11 +131,12 @@ func New(stateDir string) *Vault {
 		stateDir = DefaultStateDir()
 	}
 	return &Vault{
-		StateDir:    stateDir,
-		AccountsDir: filepath.Join(stateDir, "accounts"),
-		LogsDir:     filepath.Join(stateDir, "logs"),
-		StateFile:   filepath.Join(stateDir, "state.json"),
-		LockFile:    filepath.Join(stateDir, "switch.lock"),
+		StateDir:       stateDir,
+		AccountsDir:    filepath.Join(stateDir, "accounts"),
+		LogsDir:        filepath.Join(stateDir, "logs"),
+		StateFile:      filepath.Join(stateDir, "state.json"),
+		LockFile:       filepath.Join(stateDir, "switch.lock"),
+		LaunchLockFile: filepath.Join(stateDir, "launch.lock"),
 	}
 }
 
@@ -958,6 +961,47 @@ func (v *Vault) ActivateToken(acct *Account) error {
 	return v.withLock(func() error {
 		return AtomicCopySecret(acct.TokenFile, ActiveTokenFile())
 	})
+}
+
+// AcquireLaunchLock takes an exclusive cross-process flock on launch.lock to serialize
+// the brief (~50ms) window where a launching `agy` reads ActiveTokenFile() into memory,
+// preventing concurrent terminals from stealing each other's OAuth token during boot.
+func (v *Vault) AcquireLaunchLock() (func(), error) {
+	if err := v.EnsureDirs(); err != nil {
+		return func() {}, err
+	}
+	f, err := os.OpenFile(v.LaunchLockFile, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return func() {}, err
+	}
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+		_ = f.Close()
+		return func() {}, err
+	}
+	released := false
+	return func() {
+		if released {
+			return
+		}
+		released = true
+		_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
+		_ = f.Close()
+	}, nil
+}
+
+// ActivateTokenAndHold acquires the short launch lock and activates acct's token file.
+// Callers MUST invoke the returned release func once child `agy` logs applyAuthResult (or on error).
+func (v *Vault) ActivateTokenAndHold(acct *Account) (func(), error) {
+	release, err := v.AcquireLaunchLock()
+	if err != nil {
+		// Fall back to regular activation if lock file cannot be opened.
+		return func() {}, v.ActivateToken(acct)
+	}
+	if err := v.ActivateToken(acct); err != nil {
+		release()
+		return func() {}, err
+	}
+	return release, nil
 }
 
 func (v *Vault) SyncBackToken(acct *Account) {

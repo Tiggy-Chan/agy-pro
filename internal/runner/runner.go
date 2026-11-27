@@ -85,7 +85,15 @@ type RunResult struct {
 	QuotaText      string
 	VerifiedQuota  *vault.Quota
 	ConvID         string
+	Title          string
 	AuthEmail      string
+}
+
+type InteractiveOptions struct {
+	InitialConvID     string
+	CustomTitle       string
+	NotifyEnabled     bool
+	ReleaseLaunchLock func()
 }
 
 func StripANSI(s string) string {
@@ -422,12 +430,21 @@ func RunInteractiveOnce(
 	agyBin string,
 	agyArgs []string,
 	logPath string,
-	initialConvID string,
-	customTitle string,
+	opts InteractiveOptions,
 	acct *vault.Account,
 	autoSwitch bool,
 	env []string,
 ) *RunResult {
+	var releaseOnce sync.Once
+	releaseLaunch := func() {
+		releaseOnce.Do(func() {
+			if opts.ReleaseLaunchLock != nil {
+				opts.ReleaseLaunchLock()
+			}
+		})
+	}
+	defer releaseLaunch()
+
 	startTime := time.Now()
 	stdinFd := int(os.Stdin.Fd())
 
@@ -439,10 +456,12 @@ func RunInteractiveOnce(
 	metaReader := sessions.OpenMetaReader("")
 	defer metaReader.Close()
 
-	titleSync := NewTabTitleSync(os.Stdout, guard.IsTTY(), customTitle, filepath.Base(cwd))
-	if initialConvID != "" {
-		if meta, ok := metaReader.Lookup(initialConvID); ok {
+	notifier := NewNotifier(opts.NotifyEnabled, DefaultNotifyMinDuration)
+	titleSync := NewTabTitleSync(os.Stdout, guard.IsTTY(), opts.CustomTitle, filepath.Base(cwd))
+	if opts.InitialConvID != "" {
+		if meta, ok := metaReader.Lookup(opts.InitialConvID); ok {
 			titleSync.Update(meta.Title, meta.Preview, meta.Running)
+			notifier.Observe(titleSync.CurrentTitle(), meta.Running, time.Now())
 		}
 	}
 	titleSync.Start()
@@ -459,6 +478,7 @@ func RunInteractiveOnce(
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
+		releaseLaunch()
 		return &RunResult{ReturnCode: 1, Stderr: err.Error()}
 	}
 
@@ -480,8 +500,9 @@ func RunInteractiveOnce(
 	verifyCh := make(chan verifyResult, 1)
 
 	var (
-		convID          = initialConvID
+		convID          = opts.InitialConvID
 		authEmail       = ""
+		launchHeld      = opts.ReleaseLaunchLock != nil
 		quotaHit        = false
 		exhaustionKind  = ""
 		quotaText       = ""
@@ -501,15 +522,44 @@ func RunInteractiveOnce(
 	spinTicker := time.NewTicker(120 * time.Millisecond)
 	defer spinTicker.Stop()
 
+	// Fast 50ms startup handshake poll so launch.lock is released immediately after agy loads token (~45ms).
+	var handshakeTicker *time.Ticker
+	var handshakeC <-chan time.Time
+	if launchHeld {
+		handshakeTicker = time.NewTicker(50 * time.Millisecond)
+		handshakeC = handshakeTicker.C
+		defer handshakeTicker.Stop()
+	}
+
 loop:
 	for {
 		select {
 		case waitErr = <-waitCh:
+			releaseLaunch()
 			break loop
 		case <-stopSigCh:
+			releaseLaunch()
 			terminatedBySig = true
 			waitErr = stopChildGraceful(cmd.Process, waitCh, 1500*time.Millisecond)
 			break loop
+		case <-handshakeC:
+			newOff, cID, aEm, _ := ScanLog(logPath, logOffset)
+			logOffset = newOff
+			if cID != "" && cID != convID {
+				if convID != "" {
+					titleSync.OnConversationSwitch()
+				}
+				convID = cID
+			}
+			if aEm != "" {
+				authEmail = aEm
+			}
+			if authEmail != "" || time.Since(startTime) >= 1500*time.Millisecond {
+				releaseLaunch()
+				launchHeld = false
+				handshakeTicker.Stop()
+				handshakeC = nil
+			}
 		case <-spinTicker.C:
 			titleSync.TickSpinner()
 		case vr := <-verifyCh:
@@ -536,10 +586,19 @@ loop:
 			}
 			if aEm != "" {
 				authEmail = aEm
+				if launchHeld {
+					releaseLaunch()
+					launchHeld = false
+					if handshakeTicker != nil {
+						handshakeTicker.Stop()
+						handshakeC = nil
+					}
+				}
 			}
 			if convID != "" {
 				if meta, ok := metaReader.Lookup(convID); ok {
 					titleSync.Update(meta.Title, meta.Preview, meta.Running)
+					notifier.Observe(titleSync.CurrentTitle(), meta.Running, time.Now())
 				}
 			}
 			// Fast path: agy logged a fatal turn-ending `agent executor error: ... (ResourceExhausted, HTTP 429)`
@@ -573,6 +632,7 @@ loop:
 		}
 	}
 
+	releaseLaunch()
 	guard.Restore()
 
 	_, cID, aEm, _ := ScanLog(logPath, logOffset)
@@ -593,6 +653,7 @@ loop:
 		QuotaText:      quotaText,
 		VerifiedQuota:  verifiedQuota,
 		ConvID:         convID,
+		Title:          titleSync.CurrentTitle(),
 		AuthEmail:      authEmail,
 	}
 }

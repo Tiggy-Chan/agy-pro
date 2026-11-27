@@ -149,7 +149,7 @@ func List(dbPath string, limit int) ([]Session, error) {
 			Steps:      steps,
 			ModifiedAt: parseDBTime(modRaw),
 			Workspaces: ParseWorkspaceURIs(wsRaw),
-			Running:    strings.EqualFold(status, "CASCADE_RUN_STATUS_RUNNING"),
+			Running:    strings.EqualFold(status, "CASCADE_RUN_STATUS_RUNNING") || strings.EqualFold(status, "CASCADE_RUN_STATUS_BUSY"),
 		})
 	}
 	return out, rows.Err()
@@ -351,4 +351,96 @@ func (r *MetaReader) Close() {
 		_ = r.db.Close()
 		r.db = nil
 	}
+}
+
+// SchemaStatus summarizes read-only upstream schema compatibility for conversation_summaries.db.
+type SchemaStatus struct {
+	Exists        bool
+	OK            bool
+	Missing       []string
+	TotalTopLevel int
+	RunningCount  int
+	Err           string
+}
+
+var requiredSummaryColumns = []string{
+	"conversation_id",
+	"title",
+	"preview",
+	"step_count",
+	"last_modified_time",
+	"workspace_uris",
+	"status",
+	"nesting_depth",
+	"parent_conversation_id",
+}
+
+// CheckSchema inspects conversation_summaries.db read-only and verifies expected upstream columns.
+func CheckSchema(dbPath string) SchemaStatus {
+	if dbPath == "" {
+		dbPath = DefaultDBPath()
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		return SchemaStatus{Exists: false, Err: "未找到会话库（首次启动 agy 后自动生成）"}
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)", dbPath)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return SchemaStatus{Exists: true, Err: err.Error()}
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`PRAGMA table_info(conversation_summaries)`)
+	if err != nil {
+		return SchemaStatus{Exists: true, Err: err.Error()}
+	}
+	defer rows.Close()
+
+	have := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+			have[strings.ToLower(strings.TrimSpace(name))] = true
+		}
+	}
+	if len(have) == 0 {
+		return SchemaStatus{Exists: true, Err: "缺少 conversation_summaries 表"}
+	}
+	var missing []string
+	for _, col := range requiredSummaryColumns {
+		if !have[col] {
+			missing = append(missing, col)
+		}
+	}
+	st := SchemaStatus{Exists: true, OK: len(missing) == 0, Missing: missing}
+	if st.OK {
+		_ = db.QueryRow(`SELECT COUNT(*) FROM conversation_summaries WHERE nesting_depth = 0 AND (parent_conversation_id IS NULL OR parent_conversation_id = '')`).Scan(&st.TotalTopLevel)
+		if have["not_fully_idle"] {
+			_ = db.QueryRow(`SELECT COUNT(*) FROM conversation_summaries WHERE nesting_depth = 0 AND (parent_conversation_id IS NULL OR parent_conversation_id = '') AND (UPPER(status) IN ('CASCADE_RUN_STATUS_RUNNING','CASCADE_RUN_STATUS_BUSY') OR COALESCE(not_fully_idle,0) != 0)`).Scan(&st.RunningCount)
+		} else {
+			_ = db.QueryRow(`SELECT COUNT(*) FROM conversation_summaries WHERE nesting_depth = 0 AND (parent_conversation_id IS NULL OR parent_conversation_id = '') AND UPPER(status) IN ('CASCADE_RUN_STATUS_RUNNING','CASCADE_RUN_STATUS_BUSY')`).Scan(&st.RunningCount)
+		}
+	}
+	return st
+}
+
+// ListActiveFirst returns top-level sessions with currently running sessions pinned to the top.
+func ListActiveFirst(dbPath string, limit int) ([]Session, error) {
+	list, err := List(dbPath, limit)
+	if err != nil || len(list) == 0 {
+		return list, err
+	}
+	running := make([]Session, 0, len(list))
+	idle := make([]Session, 0, len(list))
+	for _, s := range list {
+		if s.Running {
+			running = append(running, s)
+		} else {
+			idle = append(idle, s)
+		}
+	}
+	return append(running, idle...), nil
 }

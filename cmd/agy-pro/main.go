@@ -48,13 +48,13 @@ func renderHelp() string {
 
 	b.WriteString(ui.SHead.Render("核心命令") + "\n")
 	b.WriteString(cmdLine("agy-pro [agy参数...]", "秒开原生 agy（直连 Google，撞 5h/7d 墙自动秒切续跑）"))
-	b.WriteString(cmdLine("agy-pro ui", "交互式号池仪表盘（选号启动、刷新、调序、调水位线/压缩、登录/移除）"))
+	b.WriteString(cmdLine("agy-pro ui", "交互式面板（Tab 切换号池 / 活跃会话监控，选号启动、刷新、调序、登录/移除）"))
 	b.WriteString(cmdLine("agy-pro status [-r|--reset]", "查看双池看板（-r 在线刷新，--active 仅刷主号，--reset 清冷却）"))
 	b.WriteString(cmdLine("agy-pro resume [ID] [参数]", "交互式会话选择器（当前/全部目录 + 实时搜索；也可直接传会话 ID）"))
 	b.WriteString(cmdLine("agy-pro next [agy参数...]", "切到下一个可用账号；带参数时直接按新号启动 agy"))
 	b.WriteString(cmdLine("agy-pro use <号> [agy参数]", "指定当前主号；带参数时直接按该号启动 agy"))
 	b.WriteString(cmdLine("agy-pro auth <login|import|rm>", "凭据管理：登录新账号、导入 token 文件/目录、移除账号"))
-	b.WriteString(cmdLine("agy-pro config [项 值]", "配置低余量水位线（reserve 0–50）或压缩阈值（auto-compact 80%/off）"))
+	b.WriteString(cmdLine("agy-pro config [项 值]", "配置水位线（reserve）、压缩阈值（auto-compact）与桌面通知（notify on/off）"))
 	b.WriteString(cmdLine("agy-pro doctor", "环境隔离与号池健康体检"))
 	b.WriteString("\n")
 
@@ -559,6 +559,9 @@ func cmdUI(v *vault.Vault) int {
 		switch res.Action {
 		case tui.ActionLaunch:
 			return cmdRun(v, nil, runOptions{autoSwitch: true, explicitAccount: res.Email})
+		case tui.ActionResume:
+			opts := runOptions{autoSwitch: true, forceNext: res.UseNextAccount}
+			return cmdRun(v, []string{"--resume", res.ConversationID}, opts)
 		case tui.ActionLogin:
 			_ = cmdLogin(v)
 			// Return to TUI so user immediately sees the newly logged-in account
@@ -579,7 +582,15 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		fmt.Printf("%s  %s  %s\n",
 			ui.SHeadDim.Render("auto-compact"),
 			ui.SBold.Render(vault.DisplayAutoCompact(st)),
-			ui.SDim.Render("（默认传给 agy 的自动压缩阈值 AGY_CLI_AUTO_COMPACT_OVERRIDE；支持 80% / 800K / 700000 / off）"))
+			ui.SDim.Render("（仅传给子进程 agy，默认不改 dotfiles；加 --sync-shell 可显式同步至 Shell 配置）"))
+		notifyDisp := "on"
+		if st.NotifyDisabled {
+			notifyDisp = "off"
+		}
+		fmt.Printf("%s        %s  %s\n",
+			ui.SHeadDim.Render("notify"),
+			ui.SBold.Render(notifyDisp),
+			ui.SDim.Render("（长任务 >=30s 完成或触发 429 自动切号时发送轻量系统桌面通知，无头 SSH 自动静默）"))
 		return 0
 	}
 	if args[0] == "reserve" && len(args) == 2 {
@@ -598,10 +609,11 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		}
 		return 0
 	}
-	if args[0] == "auto-compact" && len(args) == 2 {
+	if args[0] == "auto-compact" && (len(args) == 2 || (len(args) == 3 && args[2] == "--sync-shell")) {
+		syncShell := len(args) == 3 && args[2] == "--sync-shell"
 		shellHome := ""
 		applyLaunchctl := false
-		if v.IsDefaultStateDir() {
+		if syncShell && v.IsDefaultStateDir() {
 			shellHome = vault.HomeDir()
 			applyLaunchctl = true
 		}
@@ -624,7 +636,29 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		}
 		return 0
 	}
-	fmt.Fprintln(os.Stderr, "用法: agy-pro config [reserve <0-50> | auto-compact <80%|800K|700000|off>]")
+	if args[0] == "notify" && len(args) == 2 {
+		low := strings.ToLower(strings.TrimSpace(args[1]))
+		var disabled bool
+		switch low {
+		case "on", "true", "1":
+			disabled = false
+		case "off", "false", "0":
+			disabled = true
+		default:
+			fmt.Fprintf(os.Stderr, "%s notify 仅支持 on 或 off（例如: agy-pro config notify off）\n", ui.SRedB.Render("error:"))
+			return 2
+		}
+		_ = v.UpdateState(func(s *vault.State) {
+			s.NotifyDisabled = disabled
+		})
+		if disabled {
+			fmt.Printf("%s 已关闭长任务与切号桌面通知\n", ui.SGoodB.Render("✓"))
+		} else {
+			fmt.Printf("%s 已开启长任务与切号桌面通知 %s\n", ui.SGoodB.Render("✓"), ui.SDim.Render("(运行 >=30s 完成或 429 切号时触发)"))
+		}
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, "用法: agy-pro config [reserve <0-50> | auto-compact <80%|800K|700000|off> [--sync-shell] | notify <on|off>]")
 	return 2
 }
 
@@ -818,6 +852,20 @@ func cmdDoctor(v *vault.Vault) int {
 		envLines = append(envLines, fmt.Sprintf("  %s Auto-compact %s", ui.SGood.Render("✓"), ui.SDim.Render(compactEnv+" ("+vault.AutoCompactEnvKey+")")))
 	} else {
 		envLines = append(envLines, fmt.Sprintf("  %s Auto-compact %s", ui.SGood.Render("✓"), ui.SDim.Render("off（使用 agy 服务端默认）")))
+	}
+
+	schemaSt := sessions.CheckSchema("")
+	switch {
+	case !schemaSt.Exists:
+		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SAmber.Render("!"), ui.SDim.Render("未生成 conversation_summaries.db")))
+	case schemaSt.OK:
+		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SGood.Render("✓"), ui.SDim.Render(fmt.Sprintf("只读兼容 (%d 个会话，%d 个运行中)", schemaSt.TotalTopLevel, schemaSt.RunningCount))))
+	default:
+		detail := schemaSt.Err
+		if len(schemaSt.Missing) > 0 {
+			detail = "缺少列: " + strings.Join(schemaSt.Missing, ",")
+		}
+		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SAmber.Render("!"), ui.SAmber.Render("上游结构变化 ("+detail+")")))
 	}
 
 	var acctLines []string
@@ -1086,9 +1134,19 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			}
 		}
 
-		if err := v.ActivateToken(acct); err != nil {
-			fmt.Fprintf(os.Stderr, "%s 切换 token 失败: %v\n", ui.SRedB.Render("error:"), err)
-			return 1
+		var releaseLaunch func()
+		if !printMode {
+			var err error
+			releaseLaunch, err = v.ActivateTokenAndHold(acct)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s 切换 token 失败: %v\n", ui.SRedB.Render("error:"), err)
+				return 1
+			}
+		} else {
+			if err := v.ActivateToken(acct); err != nil {
+				fmt.Fprintf(os.Stderr, "%s 切换 token 失败: %v\n", ui.SRedB.Render("error:"), err)
+				return 1
+			}
 		}
 
 		if !printMode {
@@ -1132,7 +1190,12 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		if printMode {
 			res = runner.RunPrintOnce(agyBin, fullArgs, logPath, acct, opts.autoSwitch, agyEnv)
 		} else {
-			res = runner.RunInteractiveOnce(agyBin, fullArgs, logPath, convID, opts.title, acct, opts.autoSwitch, agyEnv)
+			res = runner.RunInteractiveOnce(agyBin, fullArgs, logPath, runner.InteractiveOptions{
+				InitialConvID:     convID,
+				CustomTitle:       opts.title,
+				NotifyEnabled:     !st.NotifyDisabled,
+				ReleaseLaunchLock: releaseLaunch,
+			}, acct, opts.autoSwitch, agyEnv)
 		}
 		v.SyncBackToken(acct)
 
@@ -1275,6 +1338,10 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			ui.SGoodB.Render(nextEmail),
 			resumeNote)
 
+		if !printMode {
+			runner.NewNotifier(!st.NotifyDisabled, runner.DefaultNotifyMinDuration).NotifyFailover(oldEmail, nextEmail, res.Title)
+		}
+
 		currentEmail = nextEmail
 		if !printMode {
 			promptInteractive = runner.ResumeContinuePrompt
@@ -1341,34 +1408,24 @@ func isKnownSubcommand(s string) bool {
 }
 
 func bootstrapFirstRun(v *vault.Vault, argv []string, explicitDir bool) {
+	_ = explicitDir
 	if len(argv) > 0 {
 		switch argv[0] {
 		case "-h", "--help", "help", "-V", "--version", "_verify", "_warm":
 			return
 		}
-		// Never mutate dotfiles/state on unknown/typo subcommands
+		// Never mutate state on unknown/typo subcommands
 		if !strings.HasPrefix(argv[0], "-") && !isKnownSubcommand(argv[0]) {
 			return
 		}
 	}
-	shellHome := ""
-	applyLaunchctl := false
-	if !explicitDir && v.IsDefaultStateDir() {
-		shellHome = vault.HomeDir()
-		applyLaunchctl = true
-	}
-	configured, touched, err := v.EnsureFirstRunConfig(shellHome, applyLaunchctl)
+	// Strictly zero-dotfile side effects on first run: persist default Auto-compact only in state.json
+	// (passed via child env to agy). Users can opt into syncing shell rc via `config auto-compact ... --sync-shell`.
+	configured, _, err := v.EnsureFirstRunConfig("", false)
 	if err != nil || !configured || shouldQuietFirstRun(argv) {
 		return
 	}
-	msg := "首次启动已自动配置默认 Auto-compact: " + vault.DefaultAutoCompact
-	if len(touched) > 0 {
-		names := make([]string, 0, len(touched))
-		for _, p := range touched {
-			names = append(names, filepath.Base(p))
-		}
-		msg += "（已写入 " + strings.Join(names, ", ") + "）"
-	}
+	msg := "首次启动已初始化默认配置 Auto-compact=" + vault.DefaultAutoCompact + "（零 dotfiles 修改）"
 	fmt.Fprintf(os.Stderr, "%s %s %s\n", ui.Brand("agy-pro"), ui.SDim.Render("·"), ui.SGood.Render(msg))
 }
 

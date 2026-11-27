@@ -244,6 +244,42 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	if got := vault.EffectiveAutoCompact(v.LoadState()); got != "" {
 		t.Fatalf("expected disabled EffectiveAutoCompact=\"\", got %q", got)
 	}
+	// `config notify off` / `on` and invalid value rejection
+	if rc := runCLI([]string{"config", "notify", "off"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config notify off, got %d", rc)
+	}
+	if !v.LoadState().NotifyDisabled {
+		t.Fatalf("expected NotifyDisabled=true after config notify off")
+	}
+	if rc := runCLI([]string{"config", "notify", "on"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config notify on, got %d", rc)
+	}
+	if v.LoadState().NotifyDisabled {
+		t.Fatalf("expected NotifyDisabled=false after config notify on")
+	}
+	if rc := runCLI([]string{"config", "notify", "maybe"}, dir); rc != 2 {
+		t.Fatalf("expected exit 2 on invalid config notify value, got %d", rc)
+	}
+	// Default first run + `config auto-compact` without --sync-shell MUST NOT touch user dotfiles!
+	cleanHome := t.TempDir()
+	t.Setenv("HOME", cleanHome)
+	t.Setenv("XDG_STATE_HOME", "")
+	rcPath := filepath.Join(cleanHome, ".bashrc")
+	origRC := "export PATH=\"$HOME/.local/bin:$PATH\"\n"
+	_ = os.WriteFile(rcPath, []byte(origRC), 0o644)
+	if rc := runCLI([]string{"config", "auto-compact", "75%"}, ""); rc != 0 {
+		t.Fatalf("expected exit 0 on default-state config auto-compact 75%%, got %d", rc)
+	}
+	if afterRC, _ := os.ReadFile(rcPath); string(afterRC) != origRC {
+		t.Fatalf("config auto-compact without --sync-shell MUST NOT modify .bashrc! got:\n%s", string(afterRC))
+	}
+	// With explicit --sync-shell it DOES sync cleanly
+	if rc := runCLI([]string{"config", "auto-compact", "75%", "--sync-shell"}, ""); rc != 0 {
+		t.Fatalf("expected exit 0 on config auto-compact 75%% --sync-shell, got %d", rc)
+	}
+	if afterRC, _ := os.ReadFile(rcPath); !strings.Contains(string(afterRC), `AGY_CLI_AUTO_COMPACT_OVERRIDE="75%"`) {
+		t.Fatalf("expected --sync-shell to update .bashrc, got:\n%s", string(afterRC))
+	}
 	// Invalid CLI launch flags must fail fast with exit code 2 (not silently ignored)
 	if rc := runCLI([]string{"--auto-compact", "NaN%"}, dir); rc != 2 {
 		t.Fatalf("expected exit 2 on --auto-compact NaN%%, got %d", rc)

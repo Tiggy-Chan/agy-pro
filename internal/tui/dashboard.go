@@ -11,6 +11,7 @@ import (
 
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
 	"github.com/Tiggy-Chan/agy-pro/internal/router"
+	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
@@ -21,11 +22,14 @@ const (
 	ActionNone ActionKind = iota
 	ActionLaunch
 	ActionLogin
+	ActionResume
 )
 
 type Result struct {
-	Action ActionKind
-	Email  string
+	Action         ActionKind
+	Email          string
+	ConversationID string
+	UseNextAccount bool
 }
 
 type probeDoneMsg struct {
@@ -34,10 +38,13 @@ type probeDoneMsg struct {
 }
 
 type autoRefreshStartMsg struct{}
+type sessionTickMsg struct{}
 
 const (
 	autoRefreshStaleAge = 180.0 // auto-refresh cached rows older than 3m when opening `agy-pro ui`
 	maxConcurrentProbes = 8
+	tabPool             = 0
+	tabSessions         = 1
 )
 
 type model struct {
@@ -48,16 +55,21 @@ type model struct {
 	order         []string
 	quotas        map[string]*vault.Quota
 	cursor        int
+	tab           int
+	sessionsList  []sessions.Session
+	sessCursor    int
+	sessOffset    int
+	homeDir       string
 	width         int
 	height        int
 	spinner       spinner.Model
-	refreshing     map[string]bool
-	refreshQueue   []string
-	autoRefreshOn  bool
-	confirmDel     string
-	toast          string
-	toastStyle     lipgloss.Style
-	result         Result
+	refreshing    map[string]bool
+	refreshQueue  []string
+	autoRefreshOn bool
+	confirmDel    string
+	toast         string
+	toastStyle    lipgloss.Style
+	result        Result
 }
 
 func newModel(v *vault.Vault, agyBin string) model {
@@ -68,6 +80,7 @@ func newModel(v *vault.Vault, agyBin string) model {
 	m := model{
 		vault:         v,
 		agyBin:        agyBin,
+		homeDir:       vault.HomeDir(),
 		spinner:       sp,
 		refreshing:    map[string]bool{},
 		autoRefreshOn: true,
@@ -76,6 +89,7 @@ func newModel(v *vault.Vault, agyBin string) model {
 		toastStyle:    ui.SDim,
 	}
 	m.reload()
+	m.reloadSessions()
 	for i, e := range m.order {
 		if e == m.state.Active {
 			m.cursor = i
@@ -83,6 +97,49 @@ func newModel(v *vault.Vault, agyBin string) model {
 		}
 	}
 	return m
+}
+
+func (m *model) reloadSessions() {
+	list, err := sessions.ListActiveFirst("", 60)
+	if err != nil {
+		return
+	}
+	m.sessionsList = list
+	if m.sessCursor >= len(m.sessionsList) && len(m.sessionsList) > 0 {
+		m.sessCursor = len(m.sessionsList) - 1
+	}
+	if m.sessCursor < 0 {
+		m.sessCursor = 0
+	}
+	m.clampSessionOffset()
+}
+
+func (m *model) sessionPageRows() int {
+	rows := m.height - 14
+	if rows < 5 {
+		rows = 5
+	}
+	if rows > 14 {
+		rows = 14
+	}
+	return rows
+}
+
+func (m *model) clampSessionOffset() {
+	page := m.sessionPageRows()
+	if m.sessCursor < m.sessOffset {
+		m.sessOffset = m.sessCursor
+	}
+	if m.sessCursor >= m.sessOffset+page {
+		m.sessOffset = m.sessCursor - page + 1
+	}
+	if m.sessOffset < 0 {
+		m.sessOffset = 0
+	}
+}
+
+func sessionTickCmd() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return sessionTickMsg{} })
 }
 
 func (m *model) needsAutoRefresh(email string, now float64) bool {
@@ -157,13 +214,11 @@ func (m *model) reload() {
 }
 
 func (m model) Init() tea.Cmd {
+	cmds := []tea.Cmd{m.spinner.Tick, sessionTickCmd()}
 	if m.autoRefreshOn && len(m.order) > 0 {
-		return tea.Batch(
-			m.spinner.Tick,
-			func() tea.Msg { return autoRefreshStartMsg{} },
-		)
+		cmds = append(cmds, func() tea.Msg { return autoRefreshStartMsg{} })
 	}
-	return m.spinner.Tick
+	return tea.Batch(cmds...)
 }
 
 func probeCmd(acct *vault.Account, agyBin string) tea.Cmd {
@@ -192,12 +247,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.clampSessionOffset()
 		return m, nil
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+
+	case sessionTickMsg:
+		m.reloadSessions()
+		return m, sessionTickCmd()
 
 	case autoRefreshStartMsg:
 		if !m.autoRefreshOn || len(m.order) == 0 {
@@ -269,6 +329,55 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result = Result{Action: ActionNone}
 			return m, tea.Quit
 
+		case "tab":
+			if m.tab == tabPool {
+				m.tab = tabSessions
+				m.reloadSessions()
+			} else {
+				m.tab = tabPool
+			}
+			m.toast = ""
+			return m, nil
+		}
+
+		if m.tab == tabSessions {
+			switch k {
+			case "up", "k":
+				if len(m.sessionsList) > 0 && m.sessCursor > 0 {
+					m.sessCursor--
+					m.clampSessionOffset()
+				}
+				return m, nil
+			case "down", "j":
+				if len(m.sessionsList) > 0 && m.sessCursor < len(m.sessionsList)-1 {
+					m.sessCursor++
+					m.clampSessionOffset()
+				}
+				return m, nil
+			case "r":
+				m.reloadSessions()
+				m.toast = "✓ 已刷新活跃会话列表"
+				m.toastStyle = ui.SGood
+				return m, nil
+			case "enter":
+				if len(m.sessionsList) > 0 {
+					sel := m.sessionsList[m.sessCursor]
+					m.result = Result{Action: ActionResume, ConversationID: sel.ID, UseNextAccount: false}
+					return m, tea.Quit
+				}
+				return m, nil
+			case "ctrl+n":
+				if len(m.sessionsList) > 0 {
+					sel := m.sessionsList[m.sessCursor]
+					m.result = Result{Action: ActionResume, ConversationID: sel.ID, UseNextAccount: true}
+					return m, tea.Quit
+				}
+				return m, nil
+			}
+			return m, nil
+		}
+
+		switch k {
 		case "up", "k":
 			if len(m.order) > 0 && m.cursor > 0 {
 				m.cursor--
@@ -432,13 +541,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) applyAutoCompact(raw string) {
-	shellHome := ""
-	applyLaunchctl := false
-	if m.vault.IsDefaultStateDir() {
-		shellHome = vault.HomeDir()
-		applyLaunchctl = true
-	}
-	norm, _, err := m.vault.SetAutoCompact(raw, shellHome, applyLaunchctl)
+	// Never touch user shell dotfiles from TUI; persist strictly inside agy-pro state.json.
+	norm, _, err := m.vault.SetAutoCompact(raw, "", false)
 	if err != nil {
 		m.toast = fmt.Sprintf("! %v", err)
 		m.toastStyle = ui.SAmber
@@ -451,6 +555,16 @@ func (m *model) applyAutoCompact(raw string) {
 		m.toast = fmt.Sprintf("✓ 默认 Auto-compact: %s", norm)
 	}
 	m.toastStyle = ui.SGood
+}
+
+func (m model) runningSessionCount() int {
+	n := 0
+	for _, s := range m.sessionsList {
+		if s.Running {
+			n++
+		}
+	}
+	return n
 }
 
 func (m model) View() string {
@@ -475,32 +589,55 @@ func (m model) View() string {
 		}
 	}
 
-	// ---- Header ----
-	leftHead := ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version)
-	metaParts := []string{
-		ui.SHeadDim.Render("native"),
-		ui.SDim.Render("drain"),
-		ui.SDim.Render(fmt.Sprintf("reserve %.0f%%", m.state.ReservePct)),
-		ui.SDim.Render("compact " + vault.DisplayAutoCompact(m.state)),
+	// ---- Header with Pool / Live Sessions Tabs ----
+	runCnt := m.runningSessionCount()
+	sessLabel := "活跃会话"
+	if runCnt > 0 {
+		sessLabel = fmt.Sprintf("活跃会话 %d", runCnt)
 	}
-	if oldestAt > 0 {
-		metaParts = append(metaParts, ui.SDim.Render("cache "+vault.FmtAge(oldestAt, now)))
-	}
-	rightHead := ui.SGoodB.Render(fmt.Sprintf("%d/%d ready", readyCount, len(m.order)))
-	headerLine := leftHead + "  " + strings.Join(metaParts, ui.SDim.Render(" · "))
-	gap := innerW - lipgloss.Width(headerLine) - lipgloss.Width(rightHead)
-	if gap > 1 {
-		headerLine += strings.Repeat(" ", gap) + rightHead
+	pillPool := ui.SDim.Render("号池")
+	pillSess := ui.SDim.Render(sessLabel)
+	if m.tab == tabPool {
+		pillPool = ui.BadgeActive.Render("号池")
 	} else {
-		headerLine += "  " + rightHead
+		pillSess = ui.BadgeActive.Render(sessLabel)
 	}
 
-	// ---- Body: Account Pool Table ----
+	leftHead := ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version) + "  " + pillPool + " " + pillSess
+	var headerLine string
+	if m.tab == tabPool {
+		metaParts := []string{
+			ui.SDim.Render(fmt.Sprintf("reserve %.0f%%", m.state.ReservePct)),
+			ui.SDim.Render("compact " + vault.DisplayAutoCompact(m.state)),
+		}
+		if oldestAt > 0 {
+			metaParts = append(metaParts, ui.SDim.Render("cache "+vault.FmtAge(oldestAt, now)))
+		}
+		rightHead := ui.SGoodB.Render(fmt.Sprintf("%d/%d ready", readyCount, len(m.order)))
+		headerLine = leftHead + "  " + strings.Join(metaParts, ui.SDim.Render(" · "))
+		if gap := innerW - lipgloss.Width(headerLine) - lipgloss.Width(rightHead); gap > 1 {
+			headerLine += strings.Repeat(" ", gap) + rightHead
+		} else {
+			headerLine += "  " + rightHead
+		}
+	} else {
+		rightHead := ui.SDim.Render(fmt.Sprintf("%d 运行中 · 共 %d", runCnt, len(m.sessionsList)))
+		headerLine = leftHead
+		if gap := innerW - lipgloss.Width(leftHead) - lipgloss.Width(rightHead); gap > 1 {
+			headerLine += strings.Repeat(" ", gap) + rightHead
+		} else {
+			headerLine += "  " + rightHead
+		}
+	}
+
+	// ---- Body ----
 	var body strings.Builder
 	body.WriteString(headerLine + "\n")
 	body.WriteString(ui.Hairline(innerW) + "\n")
 
-	if len(m.order) == 0 {
+	if m.tab == tabSessions {
+		body.WriteString(m.renderSessionsBody(innerW))
+	} else if len(m.order) == 0 {
 		body.WriteString("\n" + ui.SAmber.Render("  号池为空 — 按 l 调用官方 agy acp --login 添加首个账号") + "\n\n")
 	} else {
 		compact := innerW < 84
@@ -579,33 +716,134 @@ func (m model) View() string {
 	// ---- Toast Feedback ----
 	if m.toast != "" {
 		body.WriteString("\n" + m.toastStyle.Render(m.toast))
-	} else if len(m.refreshing) > 0 {
+	} else if m.tab == tabPool && len(m.refreshing) > 0 {
 		body.WriteString("\n" + m.spinner.View() + " " + ui.SHeadDim.Render(fmt.Sprintf("正在查询 %d 个账号...", len(m.refreshing))))
 	}
 
 	card := ui.RenderCard(body.String(), cardW, ui.ColorRule)
 
 	// ---- Footer Keybinds ----
-	keys := []string{
-		ui.KeyHint("↑↓", "选择"),
-		ui.KeyHint("enter", "启动 agy"),
-		ui.KeyHint("s", "设为主号"),
-		ui.KeyHint("r/R", "刷新全部/单个"),
-		ui.KeyHint("J/K", "调序"),
-		ui.KeyHint("+/-", "水位线"),
-		ui.KeyHint("[/]/a", "压缩阈值"),
-		ui.KeyHint("c", "清冷却"),
-		ui.KeyHint("l/d", "登录/移除"),
-		ui.KeyHint("q", "退出"),
+	var keys []string
+	if m.tab == tabSessions {
+		keys = []string{
+			ui.KeyHint("tab", "切回号池"),
+			ui.KeyHint("↑↓", "选择"),
+			ui.KeyHint("enter", "当前号恢复"),
+			ui.KeyHint("ctrl+n", "下个号恢复"),
+			ui.KeyHint("r", "立即刷新"),
+			ui.KeyHint("q", "退出"),
+		}
+	} else {
+		keys = []string{
+			ui.KeyHint("tab", "活跃会话"),
+			ui.KeyHint("↑↓", "选择"),
+			ui.KeyHint("enter", "启动 agy"),
+			ui.KeyHint("s", "设为主号"),
+			ui.KeyHint("r/R", "刷新全部/单个"),
+			ui.KeyHint("J/K", "调序"),
+			ui.KeyHint("+/-", "水位线"),
+			ui.KeyHint("[/]/a", "压缩阈值"),
+			ui.KeyHint("c", "清冷却"),
+			ui.KeyHint("l/d", "登录/移除"),
+			ui.KeyHint("q", "退出"),
+		}
 	}
 	footer := "  " + strings.Join(keys, ui.SDim.Render("  ·  "))
 	if lipgloss.Width(footer) > cardW {
-		row1 := "  " + strings.Join(keys[:5], ui.SDim.Render("  ·  "))
-		row2 := "  " + strings.Join(keys[5:], ui.SDim.Render("  ·  "))
+		mid := (len(keys) + 1) / 2
+		row1 := "  " + strings.Join(keys[:mid], ui.SDim.Render("  ·  "))
+		row2 := "  " + strings.Join(keys[mid:], ui.SDim.Render("  ·  "))
 		footer = row1 + "\n" + row2
 	}
 
 	return "\n" + card + "\n" + footer + "\n"
+}
+
+func (m model) renderSessionsBody(innerW int) string {
+	if len(m.sessionsList) == 0 {
+		return "\n" + ui.SAmber.Render("  暂无会话记录（启动一次 agy 后自动同步）") + "\n"
+	}
+	var b strings.Builder
+	now := time.Now()
+	page := m.sessionPageRows()
+	end := m.sessOffset + page
+	if end > len(m.sessionsList) {
+		end = len(m.sessionsList)
+	}
+
+	showWS := innerW >= 82
+	wsColW := 22
+	if !showWS {
+		wsColW = 0
+	}
+	titleMaxW := innerW - 26 - wsColW
+	if titleMaxW < 18 {
+		titleMaxW = 18
+	}
+
+	var rows [][]string
+	for idx := m.sessOffset; idx < end; idx++ {
+		s := m.sessionsList[idx]
+		isSel := idx == m.sessCursor
+
+		ptr := " "
+		if isSel {
+			ptr = ui.SAccentB.Render("❯")
+		}
+		var stCell string
+		if s.Running {
+			stCell = ui.SGoodB.Render(m.spinner.View() + " 运行")
+		} else {
+			stCell = ui.SDim.Render("✦ 空闲")
+		}
+
+		title := ui.Truncate(s.Title, titleMaxW)
+		if isSel {
+			title = ui.SAccentB.Render(title)
+		} else if s.Running {
+			title = ui.SBold.Render(title)
+		}
+
+		stepsCell := ui.SDim.Render(fmt.Sprintf("%d步", s.Steps))
+		ageCell := ui.SDim.Render(sessions.FmtRelativeTime(s.ModifiedAt, now))
+		if showWS {
+			wsCell := ui.SHeadDim.Render(ui.Truncate(s.PrimaryWorkspace(m.homeDir), wsColW))
+			rows = append(rows, []string{ptr, stCell, title, wsCell, stepsCell, ageCell})
+		} else {
+			rows = append(rows, []string{ptr, stCell, title, stepsCell, ageCell})
+		}
+	}
+
+	if showWS {
+		headers := []string{"", "STATE", "SESSION", "WORKSPACE", "STEPS", "TIME"}
+		aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight}
+		b.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 2))
+	} else {
+		headers := []string{"", "STATE", "SESSION", "STEPS", "TIME"}
+		aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight}
+		b.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 2))
+	}
+	b.WriteByte('\n')
+
+	sel := m.sessionsList[m.sessCursor]
+	b.WriteString(ui.Hairline(innerW) + "\n")
+	idShort := sel.ID
+	if len(idShort) > 8 {
+		idShort = idShort[:8]
+	}
+	rightMeta := ui.SDim.Render("  ·  ID ") + ui.SHeadDim.Render(idShort) + ui.SDim.Render("  ·  每 2s 自动刷新")
+	wsMax := innerW - lipgloss.Width("目录  ") - lipgloss.Width(rightMeta)
+	if wsMax < 12 {
+		wsMax = 12
+	}
+	line1 := ui.SHeadDim.Render("目录  ") + ui.SDim.Render(ui.Truncate(sel.PrimaryWorkspace(m.homeDir), wsMax)) + rightMeta
+	prev := sel.Preview
+	if prev == "" {
+		prev = sel.Title
+	}
+	line2 := ui.SHeadDim.Render("预览  ") + ui.SDim.Render(ui.Truncate(prev, innerW-8))
+	b.WriteString(line1 + "\n" + line2)
+	return b.String()
 }
 
 func (m model) renderDetailStrip(email string, now float64, width int) string {
