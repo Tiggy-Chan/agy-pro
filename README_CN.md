@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" width="112" height="112" alt="agy-pro logo" />
+</p>
+
 <h1 align="center">agy-pro</h1>
 
 <p align="center">
@@ -5,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square" alt="Go 1.24+" />
+  <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square" alt="Go 1.26+" />
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-1F2328?style=flat-square" alt="Linux & macOS" />
   <img src="https://img.shields.io/badge/Architecture-Zero%20Proxy%20%7C%20Zero%20PTY-2E7D32?style=flat-square" alt="零中转零PTY" />
   <img src="https://img.shields.io/badge/i18n-EN%20%7C%20%E4%B8%AD%E6%96%87-5B6678?style=flat-square" alt="中英双语" />
@@ -30,9 +34,9 @@
   - 撞上后端致命 429 额度墙时立刻秒切备号并 `--resume` 续跑，独立后台进程异步核验精准 5h/7d 重置时间（若为临时 429 自动解冻）。
 - **三合一交互式终端面板（`agy-pro ui`）**：
   - **号池（`1`）**：双池额度条、按 `J`/`K` 调序、`+/-` 调水位线、`[/]/a` 调压缩阈值、`l`/`d` 登录与移除、`g` 实时切语言。
-  - **当前打开（`2`）**：基于官方 `~/.gemini/antigravity-cli/presence/*.lock` 的非阻塞内核 `flock` 探测，`< 0.5ms` 精准识别本机当前真实打开的所有 `agy` 终端（同时兼容 `agy-pro` 与裸 `agy`，附带实时账号与 TTY 号）；按 `a` 可切换「仅打开 / 含历史」。
-  - **用量统计（`3`）**：只读并发扫描本地 `conversations/*.db`（关联 step 精确时间戳并归并子代理），按**今日 / 近 7 天 / 全部**统计精确 **Input / Cache Read / 命中率 / Output / 思考占比**，并列出按模型与 Top 消耗会话排行（`Enter` 直接续聊）。
-- **交互式会话选择器（`agy-pro resume`）**：纯 Go 只读检索 `conversation_summaries.db`（对标 `claude --resume`），默认当前目录、`Tab` 切全部目录、直接打字实时搜索、`Enter` 当前号恢复、`Ctrl+N` 下个号恢复。
+  - **当前打开（`2`）**：基于官方 `~/.gemini/antigravity-cli/presence/*.lock` 的非阻塞内核 `flock` 探测，`< 0.5ms` 精准识别本机当前真实打开的所有 `agy` 终端（同时兼容 `agy-pro` 与裸 `agy`，附带实时账号与 TTY 号）；按 `a` 可切换「仅打开 / 含历史」（自动隐藏 0 步空壳历史并将打开中窗口置顶）。
+  - **用量统计（`3`）**：只读并发扫描本地 `conversations/*.db`（关联单次调用精确时间戳并归并子代理），按**今日 / 近 7 天 / 全部**统计精确 **总计 / 未缓存输入 / 缓存读 / 命中率 / 输出 / 思考占比**，按模型（含 `TOTAL` 列与尾项汇总）及 Top 消耗会话排行，`Enter`/`Ctrl+N` 直接续聊，按 `r` 强制清缓存重扫。
+- **交互式会话选择器（`agy-pro resume`）**：纯 Go 只读检索 `conversation_summaries.db`（对标 `claude --resume`），自动隐藏 0 步空占位记录，默认当前目录、`Tab` 切全部目录、直接打字实时搜索、`Enter` 当前号恢复、`Ctrl+N` 下个号恢复。
 - **实时终端标签页标题 & 长任务桌面通知**：
   - 无入侵通过原子 OSC 0 同步会话名（实时响应对话内 `/rename`）与状态（`⠋` 工作中 / `✦` 就绪 / `↻` 切号中），退出自动还原原标签页标题（`AGY_PRO_NO_TITLE=1` 可关闭）。
   - 连续运行 ≥ 30 秒的任务完成或触发 429 自动切号时发送轻量系统桌面通知（Linux `notify-send` / macOS `osascript`，无头 SSH 自动静默，`agy-pro config notify on|off` 可控）。
@@ -43,13 +47,23 @@
 
 ---
 
-## 安装与编译
+## 安装与快速上手
+
+**前置条件**：本机已安装官方 `agy` CLI、`Go 1.26+`，且 `~/.local/bin` 已加入 `PATH`。
 
 ```bash
 git clone https://github.com/Tiggy-Chan/agy-pro.git
 cd agy-pro
 make test      # 运行全部单元测试与真实 PTY 终端安全测试
 make install   # 编译并安装单二进制至 ~/.local/bin/agy-pro
+```
+
+安装完成后登录 2 个及以上 Google 账号即可开跑：
+
+```bash
+agy-pro auth login   # 调用官方 `agy acp --login` 登录至独立号池（可多次添加多个账号）
+agy-pro ui           # 打开三视图面板（号池 / 当前打开 / 用量统计）
+agy-pro              # 直接启动原生 agy，撞 5h/7d 墙自动秒切续跑
 ```
 
 ---
@@ -70,6 +84,24 @@ agy-pro config [reserve <0-50> | auto-compact <90%|800K|off> [--sync-shell] | no
 agy-pro doctor                                 # 运行环境隔离、上游数据库契约与号池凭据健康体检
 ```
 
+<details>
+<summary><strong>常用启动选项与环境变量速查</strong></summary>
+
+| 选项 / 环境变量 | 说明 |
+| --- | --- |
+| `--account <关键词>` | 本次临时指定某个账号（匹配邮箱前缀或子串） |
+| `--title <名称>` | 自定义终端标签页标题（对话内 `/rename` 后仍实时同步） |
+| `--reserve <0-50>` | 本次覆盖低余量提前切号水位线 |
+| `--auto-compact <值>` | 本次覆盖 Auto-compact 阈值（如 `90%`、`800K`、`700000`、`off`） |
+| `--refresh` | 启动前先联网刷新当前主号实时额度 |
+| `--no-auto-switch` | 本次关闭撞 5h/7d 墙自动秒切续跑 |
+| `AGY_PRO_LANG` | 覆写界面语言（`en` / `zh`） |
+| `AGY_PRO_NO_TITLE=1` | 关闭 OSC 0 终端标签页实时标题同步 |
+| `AGY_PRO_STATE_DIR` | 指定独立号池与状态目录（默认 `~/.local/state/agy-pro`） |
+| `AGY_CLI_FORCE_OSC8=1` | 重新开启原生 `agy` 的 OSC-8 超链接（默认关闭以防中文路径重影） |
+
+</details>
+
 ---
 
 ## 项目寄语
@@ -80,6 +112,6 @@ agy-pro doctor                                 # 运行环境隔离、上游数�
 
 ---
 
-## Disclaimer
+## 免责声明
 
-`agy-pro` is an independent, unofficial CLI wrapper and is not affiliated with or endorsed by Google. It invokes your locally installed official `agy` binary directly without modifying its protocol or proxying API requests.
+`agy-pro` 是一个独立的非官方 CLI 增强封装工具，与 Google 无任何关联或背书。它直接调用用户本机已安装的官方 `agy` 二进制文件，不修改其二进制内容，也不代理或转发任何 API 请求。

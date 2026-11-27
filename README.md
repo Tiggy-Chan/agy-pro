@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" width="112" height="112" alt="agy-pro logo" />
+</p>
+
 <h1 align="center">agy-pro</h1>
 
 <p align="center">
@@ -5,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square" alt="Go 1.24+" />
+  <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square" alt="Go 1.26+" />
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-1F2328?style=flat-square" alt="Linux and macOS" />
   <img src="https://img.shields.io/badge/Architecture-Zero%20Proxy%20%7C%20Zero%20PTY-2E7D32?style=flat-square" alt="Zero Proxy Zero PTY" />
   <img src="https://img.shields.io/badge/i18n-EN%20%7C%20%E4%B8%AD%E6%96%87-5B6678?style=flat-square" alt="English and Chinese" />
@@ -31,9 +35,9 @@
   - Configurable low-quota proactive switching (`agy-pro config reserve 10` or `--reserve 10`).
 - **3-in-1 Interactive Dashboard (`agy-pro ui`)**:
   - **Pool (`1`)**: Live dual-pool quota bars, drain priority reordering (`J`/`K`), reserve & Auto-compact tuning (`+/-`, `[/]/a`), login/remove (`l`/`d`), and instant language toggle (`g`).
-  - **Open Sessions (`2`)**: Detects truly open `agy` terminals on this machine in `< 0.5ms` via non-blocking kernel `flock` on `~/.gemini/antigravity-cli/presence/*.lock` (covers both `agy-pro` and bare `agy`, plus live account & TTY display). Press `a` to toggle open-only vs. full history.
-  - **Token Usage (`3`)**: Read-only parallel scanner over local `conversations/*.db` (`gen_metadata` + step timestamps) showing exact per-model and per-session **Input / Cache Read / Cache Hit% / Output / Thinking** breakdown across **Today / 7 Days / All**.
-- **Interactive Session Picker (`agy-pro resume`)**: Pure-Go read-only SQLite picker (like `claude --resume`) defaulting to the current directory, with `Tab` CWD/All toggle, live multi-term search, `Enter` (current account) and `Ctrl+N` (next account) resume.
+  - **Open Sessions (`2`)**: Detects truly open `agy` terminals on this machine in `< 0.5ms` via non-blocking kernel `flock` on `~/.gemini/antigravity-cli/presence/*.lock` (covers both `agy-pro` and bare `agy`, plus live account & TTY display). Press `a` to toggle open-only vs. full history (hiding empty 0-step shells while keeping open windows pinned on top).
+  - **Token Usage (`3`)**: Read-only parallel scanner over local `conversations/*.db` (`gen_metadata` + call-level step timestamps, rolling subagents up to parent sessions) showing exact per-model (`TOTAL / Input / Cache Read / Hit% / Output`, with automatic tail rollup) and Top-session token breakdown across **Today / 7 Days / All**, with `Enter` / `Ctrl+N` to resume any session directly and `r` to force a fresh disk rescan.
+- **Interactive Session Picker (`agy-pro resume`)**: Pure-Go read-only SQLite picker (like `claude --resume`) that hides empty 0-step placeholders, defaults to the current directory, supports `Tab` CWD/All toggle, live multi-term search, `Enter` (current account) and `Ctrl+N` (next account) resume.
 - **Live Terminal Tab Title & Desktop Notifications**:
   - Syncs live session title (including in-session `/rename`) and run state (`⠋` working / `✦` idle / `↻` switching) to the terminal tab via atomic OSC 0 without PTY interception, restoring your original tab title on exit (`AGY_PRO_NO_TITLE=1` to disable).
   - Sends non-blocking desktop notifications (`notify-send` on Linux / `osascript` on macOS, silent on headless SSH) when a long turn (`>= 30s`) completes or on 429 failover (`agy-pro config notify on|off`).
@@ -45,13 +49,23 @@
 
 ---
 
-## Install & Build
+## Install & Quick Start
+
+**Prerequisites**: Official `agy` CLI installed locally, `Go 1.26+`, and `~/.local/bin` in your `PATH`.
 
 ```bash
 git clone https://github.com/Tiggy-Chan/agy-pro.git
 cd agy-pro
 make test      # Run full unit test suite & real PTY terminal guard tests
 make install   # Build and install single binary to ~/.local/bin/agy-pro
+```
+
+Then sign in 2+ Google accounts into the isolated pool and launch:
+
+```bash
+agy-pro auth login   # Sign in via official `agy acp --login` (repeat for each account)
+agy-pro ui           # Open 3-tab dashboard (Pool / Open Sessions / Token Usage)
+agy-pro              # Launch native agy directly with automatic 5h/7d failover
 ```
 
 ---
@@ -71,6 +85,24 @@ agy-pro auth <login | import <path> | rm <id>> # Credential management (official
 agy-pro config [reserve <0-50> | auto-compact <90%|800K|off> [--sync-shell] | notify <on|off> | lang <auto|en|zh>]
 agy-pro doctor                                 # Environment isolation, upstream DB schema & pool health check
 ```
+
+<details>
+<summary><strong>Launch Flags &amp; Environment Variables</strong></summary>
+
+| Flag / Variable | Description |
+| --- | --- |
+| `--account <keyword>` | Use a specific account for this run (matches email prefix or substring) |
+| `--title <name>` | Set an explicit terminal tab title (still live-syncs on `/rename`) |
+| `--reserve <0-50>` | Override proactive low-quota switch threshold for this run |
+| `--auto-compact <val>` | Override Auto-compact threshold for this run (`90%`, `800K`, `700000`, `off`) |
+| `--refresh` | Refresh active account quota before launching |
+| `--no-auto-switch` | Disable automatic 5h/7d failover and resume for this run |
+| `AGY_PRO_LANG` | Override UI/CLI language (`en` / `zh`) |
+| `AGY_PRO_NO_TITLE=1` | Disable OSC 0 live terminal tab title synchronization |
+| `AGY_PRO_STATE_DIR` | Override isolated account vault directory (default `~/.local/state/agy-pro`) |
+| `AGY_CLI_FORCE_OSC8=1` | Re-enable native `agy` OSC-8 terminal hyperlinks (disabled by default to guard CJK paths) |
+
+</details>
 
 ---
 

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <clipPath id="arch-clip">
+      <path d="M 24 228 C 31 146, 65 75, 128 26 C 138 34, 148 44, 156 55 C 141 59, 129 67, 118 81 C 92 113, 75 162, 68 228 Z"/>
+      <path d="M 162 63 C 198 102, 224 157, 232 228 L 188 228 C 181 166, 163 117, 132 82 C 141 72, 151 66, 162 63 Z"/>
+    </clipPath>
+    <filter id="arch-blur" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+    <filter id="arch-blur-soft" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <clipPath id="star-clip">
+      <path d="M 128 130 C 131.5 154, 140 162.5, 164 166 C 140 169.5, 131.5 178, 128 202 C 124.5 178, 116 169.5, 92 166 C 116 162.5, 124.5 154, 128 130 Z"/>
+    </clipPath>
+    <filter id="star-blur" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="11"/>
+    </filter>
+    <filter id="star-blur-soft" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="6.5"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#arch-clip)">
+    <rect x="0" y="0" width="256" height="256" fill="#3186FF"/>
+    <g filter="url(#arch-blur)">
+      <ellipse cx="52" cy="112" rx="58" ry="68" fill="#00BA63"/>
+      <ellipse cx="116" cy="36" rx="56" ry="44" fill="#FFCE24"/>
+      <ellipse cx="176" cy="76" rx="56" ry="50" fill="#FC4638"/>
+      <ellipse cx="192" cy="140" rx="46" ry="42" fill="#6395FF"/>
+      <ellipse cx="208" cy="202" rx="64" ry="62" fill="#2A7BFF"/>
+      <ellipse cx="48" cy="212" rx="58" ry="56" fill="#2A7BFF"/>
+    </g>
+    <g filter="url(#arch-blur-soft)">
+      <ellipse cx="128" cy="32" rx="34" ry="26" fill="#FFE248"/>
+      <ellipse cx="164" cy="68" rx="32" ry="26" fill="#FF513B"/>
+    </g>
+    <path d="M 24 228 C 31 146, 65 75, 128 26 C 135 31, 141 37, 147 44 C 95 85, 58 148, 46 228 Z" fill="#FFFFFF" fill-opacity="0.15"/>
+    <path d="M 46 228 C 58 148, 95 85, 147 44 C 150 48, 153 51, 156 55 C 141 59, 129 67, 118 81 C 92 113, 75 162, 68 228 Z" fill="#0B1936" fill-opacity="0.11"/>
+    <path d="M 162 63 C 198 102, 224 157, 232 228 L 210 228 C 202 162, 181 110, 148 70 C 153 67, 157 64, 162 63 Z" fill="#FFFFFF" fill-opacity="0.13"/>
+    <path d="M 148 70 C 181 110, 202 162, 210 228 L 188 228 C 181 166, 163 117, 132 82 C 137 77, 142 73, 148 70 Z" fill="#0B1936" fill-opacity="0.14"/>
+  </g>
+  <g clip-path="url(#star-clip)">
+    <rect x="88" y="126" width="80" height="80" fill="#3186FF"/>
+    <g filter="url(#star-blur)">
+      <ellipse cx="122" cy="132" rx="26" ry="22" fill="#FC413D"/>
+      <ellipse cx="96" cy="162" rx="24" ry="24" fill="#FBBC04"/>
+      <ellipse cx="114" cy="198" rx="26" ry="24" fill="#00B95C"/>
+      <ellipse cx="160" cy="164" rx="26" ry="26" fill="#3186FF"/>
+      <ellipse cx="144" cy="146" rx="18" ry="14" fill="#749BFF"/>
+    </g>
+    <g filter="url(#star-blur-soft)">
+      <ellipse cx="94" cy="166" rx="15" ry="14" fill="#FFE432"/>
+      <ellipse cx="125" cy="132" rx="16" ry="12" fill="#FC413D"/>
+      <ellipse cx="124" cy="198" rx="16" ry="14" fill="#00C466"/>
+    </g>
+  </g>
+</svg>
