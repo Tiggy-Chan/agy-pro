@@ -1,8 +1,7 @@
 package router
 
 import (
-	"fmt"
-
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
@@ -14,16 +13,32 @@ func PruneExpiredCooldowns(st *vault.State, now float64) {
 	}
 }
 
-func AccountAvailability(email string, st *vault.State, quotas map[string]*vault.Quota, now float64) (bool, string) {
+// StatusKind returns a stable, language-independent availability code: "ok", "cooling", "7d", or "5h".
+func StatusKind(email string, st *vault.State, quotas map[string]*vault.Quota, now float64) string {
 	if cd := st.Cooldowns[email]; cd != nil && cd.Until > now {
-		return false, fmt.Sprintf("冷却中 (%s)", vault.FmtDuration(cd.Until-now))
+		return "cooling"
 	}
 	if q := quotas[email]; q != nil {
 		if q.D7Rem != nil && *q.D7Rem <= 0.5 {
-			return false, fmt.Sprintf("7d 已满 (%s)", vault.FmtLocalTime(q.D7Reset))
+			return "7d"
 		}
 		if q.H5Rem != nil && *q.H5Rem <= 0.5 {
-			return false, fmt.Sprintf("5h 已满 (%s)", vault.FmtLocalTime(q.H5Reset))
+			return "5h"
+		}
+	}
+	return "ok"
+}
+
+func AccountAvailability(email string, st *vault.State, quotas map[string]*vault.Quota, now float64) (bool, string) {
+	if cd := st.Cooldowns[email]; cd != nil && cd.Until > now {
+		return false, i18n.T("router.cooling", vault.FmtDuration(cd.Until-now))
+	}
+	if q := quotas[email]; q != nil {
+		if q.D7Rem != nil && *q.D7Rem <= 0.5 {
+			return false, i18n.T("router.7d_full", vault.FmtLocalTime(q.D7Reset))
+		}
+		if q.H5Rem != nil && *q.H5Rem <= 0.5 {
+			return false, i18n.T("router.5h_full", vault.FmtLocalTime(q.H5Reset))
 		}
 	}
 	return true, "ok"
@@ -132,7 +147,7 @@ func PickDrainWithReserve(
 ) (string, string) {
 	PruneExpiredCooldowns(st, now)
 	if len(order) == 0 {
-		return "", "号池为空，请先运行 `agy-pro auth login` 登录账号，或 `agy-pro auth import <目录>` 导入。"
+		return "", i18n.T("router.pool_empty")
 	}
 
 	active := st.Active
@@ -229,9 +244,9 @@ func PickDrainWithReserve(
 		}
 	}
 
-	msg := fmt.Sprintf("全部 %d 个账号均已耗尽或处于冷却中", len(order))
+	msg := i18n.T("router.all_exhausted", len(order))
 	if soonest > now {
-		msg += fmt.Sprintf("（最早恢复: %s，约 %s 后）", vault.FmtLocalTime(soonest), vault.FmtDuration(soonest-now))
+		msg += i18n.T("router.soonest", vault.FmtLocalTime(soonest), vault.FmtDuration(soonest-now))
 	}
 	return "", msg
 }

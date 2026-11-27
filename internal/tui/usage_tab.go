@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
 	"github.com/Tiggy-Chan/agy-pro/internal/usage"
 )
@@ -48,20 +49,20 @@ func renderShareBar(share float64, width int) string {
 
 func (m model) renderUsageBody(innerW int) string {
 	if m.usageLoading && m.usageReport == nil {
-		return "\n  " + m.spinner.View() + " " + ui.SHeadDim.Render("正在只读统计本地 conversations/*.db 的 Token 消耗明细...") + "\n"
+		return "\n  " + m.spinner.View() + " " + ui.SHeadDim.Render(i18n.T("usage.loading")) + "\n"
 	}
 	rep := m.usageReport
 	if rep == nil || rep.Total.Calls == 0 {
-		return "\n" + ui.SAmber.Render(fmt.Sprintf("  %s暂无本地 LLM 调用记录（按 ←/→ 或 t 切换统计周期：今日 / 近 7 天 / 全部）", m.usageRange.Label())) + "\n"
+		return "\n" + ui.SAmber.Render(i18n.T("usage.empty", m.usageRange.Label())) + "\n"
 	}
 
 	var b strings.Builder
 
 	// ---- KPI Summary Strip ----
 	tot := rep.Total
-	kpi1 := ui.SHeadDim.Render("总消耗 ") + ui.SBold.Render(usage.FmtTokens(tot.TotalTokens())) +
-		ui.SDim.Render(" tokens  ·  ") + ui.SAccentB.Render(fmt.Sprintf("%d", tot.Calls)) + ui.SDim.Render(" 次调用  ·  ") +
-		ui.SBold.Render(fmt.Sprintf("%d", rep.ActiveConvs)) + ui.SDim.Render(" 个会话")
+	kpi1 := ui.SHeadDim.Render(i18n.T("usage.kpi.total")) + ui.SBold.Render(usage.FmtTokens(tot.TotalTokens())) +
+		ui.SDim.Render(i18n.T("usage.kpi.tokens_calls")) + ui.SAccentB.Render(fmt.Sprintf("%d", tot.Calls)) + ui.SDim.Render(i18n.T("usage.kpi.calls_unit")) +
+		ui.SBold.Render(fmt.Sprintf("%d", rep.ActiveConvs)) + ui.SDim.Render(i18n.T("usage.kpi.convs_unit"))
 	if m.usageLoading {
 		kpi1 += "  " + m.spinner.View()
 	} else {
@@ -75,12 +76,12 @@ func (m model) renderUsageBody(innerW int) string {
 	}
 	outInfo := ui.SBold.Render(usage.FmtTokens(tot.Output))
 	if tot.Thinking > 0 {
-		outInfo += ui.SDim.Render(fmt.Sprintf(" (思考 %.0f%%)", tot.ThinkingPct()))
+		outInfo += ui.SDim.Render(i18n.T("usage.kpi.thinking", tot.ThinkingPct()))
 	}
-	kpi2 := ui.SHeadDim.Render("未缓存输入 ") + ui.SBold.Render(usage.FmtTokens(tot.Input)) +
-		ui.SDim.Render("  ·  缓存读 ") + ui.SBold.Render(usage.FmtTokens(tot.CacheRead)) +
+	kpi2 := ui.SHeadDim.Render(i18n.T("usage.kpi.input")) + ui.SBold.Render(usage.FmtTokens(tot.Input)) +
+		ui.SDim.Render(i18n.T("usage.kpi.cache_read")) + ui.SBold.Render(usage.FmtTokens(tot.CacheRead)) +
 		" " + hitStyle.Render(fmt.Sprintf("%.1f%%", hitPct)) +
-		ui.SDim.Render("  ·  输出 ") + outInfo
+		ui.SDim.Render(i18n.T("usage.kpi.output")) + outInfo
 
 	b.WriteString("  " + kpi1 + "\n")
 	b.WriteString("  " + kpi2 + "\n")
@@ -164,7 +165,7 @@ func (m model) renderUsageBody(innerW int) string {
 			sRows = append(sRows, []string{
 				ptr,
 				title,
-				ui.SDim.Render(fmt.Sprintf("%d次", sr.Stats.Calls)),
+				ui.SDim.Render(i18n.T("usage.calls_short", sr.Stats.Calls)),
 				ui.SBold.Render(usage.FmtTokens(sr.Stats.TotalTokens())),
 				ui.SGood.Render(fmt.Sprintf("%.0f%%", sr.Stats.CacheHitPct())),
 				ui.SDim.Render(usage.FmtTokens(sr.Stats.Output)),

@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
 	"github.com/Tiggy-Chan/agy-pro/internal/router"
 	"github.com/Tiggy-Chan/agy-pro/internal/runner"
@@ -42,36 +43,36 @@ func renderHelp() string {
 	}
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version) + "  " + ui.SDim.Render("官方 agy 零入侵原生多账号增强工具") + "\n\n")
-	b.WriteString(ui.SHead.Render("用法") + "\n")
-	b.WriteString("  " + ui.SBold.Render("agy-pro") + " " + ui.SDim.Render("[命令 | -- agy原生参数... | agy原生参数...]") + "\n\n")
+	b.WriteString(ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version) + "  " + ui.SDim.Render(i18n.T("help.tagline")) + "\n\n")
+	b.WriteString(ui.SHead.Render(i18n.T("help.usage")) + "\n")
+	b.WriteString("  " + ui.SBold.Render("agy-pro") + " " + ui.SDim.Render(i18n.T("help.usage_args")) + "\n\n")
 
-	b.WriteString(ui.SHead.Render("核心命令") + "\n")
-	b.WriteString(cmdLine("agy-pro [agy参数...]", "秒开原生 agy（直连 Google，撞 5h/7d 墙自动秒切续跑）"))
-	b.WriteString(cmdLine("agy-pro ui", "交互式面板（Tab 切换 号池 / 当前打开 / 用量统计，选号启动、刷新、调序）"))
-	b.WriteString(cmdLine("agy-pro status [-r|--reset]", "查看双池看板（-r 在线刷新，--active 仅刷主号，--reset 清冷却）"))
-	b.WriteString(cmdLine("agy-pro resume [ID] [参数]", "交互式会话选择器（当前/全部目录 + 实时搜索；也可直接传会话 ID）"))
-	b.WriteString(cmdLine("agy-pro next [agy参数...]", "切到下一个可用账号；带参数时直接按新号启动 agy"))
-	b.WriteString(cmdLine("agy-pro use <号> [agy参数]", "指定当前主号；带参数时直接按该号启动 agy"))
-	b.WriteString(cmdLine("agy-pro auth <login|import|rm>", "凭据管理：登录新账号、导入 token 文件/目录、移除账号"))
-	b.WriteString(cmdLine("agy-pro config [项 值]", "配置水位线（reserve）、压缩阈值（auto-compact）与桌面通知（notify on/off）"))
-	b.WriteString(cmdLine("agy-pro doctor", "环境隔离与号池健康体检"))
+	b.WriteString(ui.SHead.Render(i18n.T("help.core_commands")) + "\n")
+	b.WriteString(cmdLine("agy-pro [flags...]", i18n.T("help.cmd.default")))
+	b.WriteString(cmdLine("agy-pro ui", i18n.T("help.cmd.ui")))
+	b.WriteString(cmdLine("agy-pro status [-r|--reset]", i18n.T("help.cmd.status")))
+	b.WriteString(cmdLine("agy-pro resume [ID] [flags]", i18n.T("help.cmd.resume")))
+	b.WriteString(cmdLine("agy-pro next [flags...]", i18n.T("help.cmd.next")))
+	b.WriteString(cmdLine("agy-pro use <acct> [flags]", i18n.T("help.cmd.use")))
+	b.WriteString(cmdLine("agy-pro auth <login|import|rm>", i18n.T("help.cmd.auth")))
+	b.WriteString(cmdLine("agy-pro config [key val]", i18n.T("help.cmd.config")))
+	b.WriteString(cmdLine("agy-pro doctor", i18n.T("help.cmd.doctor")))
 	b.WriteString("\n")
 
-	b.WriteString(ui.SHead.Render("启动选项") + "\n")
-	b.WriteString(cmdLine("--account <关键词>", "本次临时指定某个账号"))
-	b.WriteString(cmdLine("--title <名称>", "自定义终端标签页标题（对话内 /rename 或自动命名后实时同步）"))
-	b.WriteString(cmdLine("--reserve <0-50>", "本次覆盖低余量提前切号水位线"))
-	b.WriteString(cmdLine("--auto-compact <值>", "本次覆盖 Auto-compact 阈值（如 80%、800K、off）"))
-	b.WriteString(cmdLine("--refresh", "启动前先联网刷新当前主号额度"))
-	b.WriteString(cmdLine("--no-auto-switch", "关闭撞 5h/7d 墙自动秒切续跑"))
-	b.WriteString(cmdLine("-- <agy参数...>", "POSIX 显式透传后续全部参数给原生 agy"))
+	b.WriteString(ui.SHead.Render(i18n.T("help.launch_options")) + "\n")
+	b.WriteString(cmdLine("--account <keyword>", i18n.T("help.opt.account")))
+	b.WriteString(cmdLine("--title <name>", i18n.T("help.opt.title")))
+	b.WriteString(cmdLine("--reserve <0-50>", i18n.T("help.opt.reserve")))
+	b.WriteString(cmdLine("--auto-compact <val>", i18n.T("help.opt.auto_compact")))
+	b.WriteString(cmdLine("--refresh", i18n.T("help.opt.refresh")))
+	b.WriteString(cmdLine("--no-auto-switch", i18n.T("help.opt.no_auto_switch")))
+	b.WriteString(cmdLine("-- <agy flags...>", i18n.T("help.opt.passthrough")))
 	b.WriteString("\n")
 
-	b.WriteString(ui.SHead.Render("示例") + "\n")
-	b.WriteString(ui.SDim.Render("  交互式浏览当前/全部目录会话并续聊（支持实时搜索、Ctrl+N 换号恢复）") + "\n")
+	b.WriteString(ui.SHead.Render(i18n.T("help.examples")) + "\n")
+	b.WriteString(ui.SDim.Render("  "+i18n.T("help.ex.resume")) + "\n")
 	b.WriteString("    " + ui.SAccent.Render("agy-pro resume --dangerously-skip-permissions") + "\n")
-	b.WriteString(ui.SDim.Render("  切到下一个可用账号并直接按原生参数打开对话") + "\n")
+	b.WriteString(ui.SDim.Render("  "+i18n.T("help.ex.next")) + "\n")
 	b.WriteString("    " + ui.SAccent.Render("agy-pro next --dangerously-skip-permissions") + "\n")
 	return b.String()
 }
@@ -136,14 +137,14 @@ func matchEmail(order []string, needle string) (string, string) {
 		}
 	}
 	if len(hits) == 0 {
-		avail := "(空)"
+		avail := i18n.T("common.empty")
 		if len(order) > 0 {
 			avail = strings.Join(order, ", ")
 		}
-		return "", fmt.Sprintf("未匹配到账号 '%s'。当前号池: %s", needle, avail)
+		return "", i18n.T("common.no_match_account", needle, avail)
 	}
 	if len(hits) > 1 {
-		return "", fmt.Sprintf("匹配到多个账号: %s，请写更精确的关键词。", strings.Join(hits, ", "))
+		return "", i18n.T("common.multi_match_account", strings.Join(hits, ", "))
 	}
 	return hits[0], ""
 }
@@ -261,12 +262,12 @@ func cmdInternalWarm(v *vault.Vault, args []string) int {
 	return 0
 }
 
-func statusBadge(isActive, ok bool, why string, q *vault.Quota, reservePct float64) string {
+func statusBadge(isActive, ok bool, kind string, q *vault.Quota, reservePct float64) string {
 	if !ok {
-		switch {
-		case strings.HasPrefix(why, "7d"):
+		switch kind {
+		case "7d":
 			return ui.BadgeFull.Render("7D FULL")
-		case strings.HasPrefix(why, "5h"):
+		case "5h":
 			return ui.BadgeFull.Render("5H FULL")
 		default:
 			return ui.BadgeCooling.Render("COOLING")
@@ -302,10 +303,10 @@ func cmdStatus(v *vault.Vault, args []string) int {
 		case "--json":
 			asJSON = true
 		case "-h", "--help":
-			fmt.Println("用法: agy-pro status [-r|--refresh] [--active] [--reset] [--no-auto-init] [--json]")
+			fmt.Println(i18n.T("status.usage"))
 			return 0
 		default:
-			fmt.Fprintf(os.Stderr, "%s 未知选项: %s\n", ui.SRedB.Render("error:"), a)
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("common.unknown_flag", a))
 			return 2
 		}
 	}
@@ -323,7 +324,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 			}
 		})
 		if !asJSON {
-			fmt.Printf("%s 已清空所有账号的本地冷却与耗尽缓存\n", ui.SGoodB.Render("✓"))
+			fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("status.reset_done"))
 		}
 		if !doRefresh {
 			noAutoInit = true
@@ -334,7 +335,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	st := v.LoadState()
 	order := v.OrderedEmails(accounts, st)
 	if len(order) == 0 {
-		fmt.Println(ui.SAmber.Render("!") + " 号池为空。请运行 " + ui.SHeadDim.Render("agy-pro auth login") + " 登录账号，或 " + ui.SHeadDim.Render("agy-pro auth import <目录>") + " 导入。")
+		fmt.Println(ui.SAmber.Render("!") + " " + i18n.T("common.pool_empty_short", ui.SHeadDim.Render("agy-pro auth login"), ui.SHeadDim.Render("agy-pro auth import <dir>")))
 		return 1
 	}
 
@@ -365,13 +366,13 @@ func cmdStatus(v *vault.Vault, args []string) int {
 			}
 		}
 
-		ui.StderrProgress(fmt.Sprintf("正在查询额度 [0/%d] ...", len(targets)), false)
+		ui.StderrProgress(i18n.T("status.probing_start", len(targets)), false)
 		fresh := quota.RefreshAll(targets, agyBin, 8, 35*time.Second, func(done, total int, email string, q *vault.Quota) {
 			tag := "ok"
 			if q.Error != "" {
 				tag = q.Error
 			}
-			ui.StderrProgress(fmt.Sprintf("正在查询额度 [%d/%d] %s (%s)", done, total, email, tag), false)
+			ui.StderrProgress(i18n.T("status.probing_progress", done, total, email, tag), false)
 		})
 		ui.StderrProgress("", true)
 
@@ -473,7 +474,8 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	for _, e := range order {
 		isActive := e == active
 		q := quotas[e]
-		ok, why := router.AccountAvailability(e, st, quotas, now)
+		ok, _ := router.AccountAvailability(e, st, quotas, now)
+		kind := router.StatusKind(e, st, quotas, now)
 
 		dot := ui.SDim.Render("○")
 		if isActive {
@@ -500,11 +502,13 @@ func cmdStatus(v *vault.Vault, args []string) int {
 			claude = ui.SDim.Render("-/-")
 		}
 
-		stBadge := statusBadge(isActive, ok, why, q, st.ReservePct)
-		if !ok && showReset && strings.HasPrefix(why, "7d") && q != nil && q.D7Reset > 0 {
+		stBadge := statusBadge(isActive, ok, kind, q, st.ReservePct)
+		if !ok && showReset && kind == "7d" && q != nil && q.D7Reset > 0 {
 			stBadge += " " + ui.SDim.Render(vault.FmtLocalTime(q.D7Reset))
-		} else if !ok && showReset && strings.HasPrefix(why, "冷却中") {
-			stBadge += " " + ui.SDim.Render(strings.TrimPrefix(why, "冷却中 "))
+		} else if !ok && showReset && kind == "cooling" {
+			if cd := st.Cooldowns[e]; cd != nil && cd.Until > now {
+				stBadge += " " + ui.SDim.Render("("+vault.FmtDuration(cd.Until-now)+")")
+			}
 		}
 
 		if compact {
@@ -532,10 +536,10 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	cwd, _ := os.Getwd()
 	lastConv := st.LastConv[cwd]
 	hints := []string{
-		ui.KeyHint("agy-pro ui", "交互面板"),
+		ui.KeyHint("agy-pro ui", i18n.T("status.hint.ui")),
 	}
 	if !needRefresh {
-		hints = append(hints, ui.KeyHint("agy-pro status -r", "刷新实时额度"))
+		hints = append(hints, ui.KeyHint("agy-pro status -r", i18n.T("status.hint.refresh")))
 	}
 	if lastConv != "" {
 		shortID := lastConv
@@ -553,7 +557,7 @@ func cmdUI(v *vault.Vault) int {
 	for {
 		res, err := tui.Run(v, agyBin)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s 无法启动交互面板: %v\n", ui.SRedB.Render("error:"), err)
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("ui.launch_err", err))
 			return 1
 		}
 		switch res.Action {
@@ -578,11 +582,11 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		fmt.Printf("%s       %s  %s\n",
 			ui.SHeadDim.Render("reserve"),
 			ui.SBold.Render(fmt.Sprintf("%.0f%%", st.ReservePct)),
-			ui.SDim.Render("（启动新会话前若当前主号剩余 <= 水位线则自动提前切至满血备号；0 表示用尽再切）"))
+			ui.SDim.Render(i18n.T("config.desc.reserve")))
 		fmt.Printf("%s  %s  %s\n",
 			ui.SHeadDim.Render("auto-compact"),
 			ui.SBold.Render(vault.DisplayAutoCompact(st)),
-			ui.SDim.Render("（仅传给子进程 agy，默认不改 dotfiles；加 --sync-shell 可显式同步至 Shell 配置）"))
+			ui.SDim.Render(i18n.T("config.desc.compact")))
 		notifyDisp := "on"
 		if st.NotifyDisabled {
 			notifyDisp = "off"
@@ -590,22 +594,26 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		fmt.Printf("%s        %s  %s\n",
 			ui.SHeadDim.Render("notify"),
 			ui.SBold.Render(notifyDisp),
-			ui.SDim.Render("（长任务 >=30s 完成或触发 429 自动切号时发送轻量系统桌面通知，无头 SSH 自动静默）"))
+			ui.SDim.Render(i18n.T("config.desc.notify")))
+		fmt.Printf("%s          %s  %s\n",
+			ui.SHeadDim.Render("lang"),
+			ui.SBold.Render(i18n.DisplayPref(st.Language)),
+			ui.SDim.Render(i18n.T("config.desc.lang")))
 		return 0
 	}
 	if args[0] == "reserve" && len(args) == 2 {
 		val, err := strconv.ParseFloat(strings.TrimSuffix(args[1], "%"), 64)
 		if err != nil || val < 0 || val > 50 {
-			fmt.Fprintf(os.Stderr, "%s reserve 需为 0 到 50 之间的数字（例如: agy-pro config reserve 10）\n", ui.SRedB.Render("error:"))
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("config.err.reserve"))
 			return 2
 		}
 		_ = v.UpdateState(func(s *vault.State) {
 			s.ReservePct = val
 		})
 		if val == 0 {
-			fmt.Printf("%s 已关闭低余量提前切号 %s\n", ui.SGoodB.Render("✓"), ui.SDim.Render("(reserve = 0%)"))
+			fmt.Printf("%s %s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.reserve_off"), ui.SDim.Render("(reserve = 0%)"))
 		} else {
-			fmt.Printf("%s 已设置低余量提前切号水位线: %s\n", ui.SGoodB.Render("✓"), ui.SGoodB.Render(fmt.Sprintf("%.0f%%", val)))
+			fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.reserve_set", ui.SGoodB.Render(fmt.Sprintf("%.0f%%", val))))
 		}
 		return 0
 	}
@@ -619,20 +627,20 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		}
 		norm, touched, err := v.SetAutoCompact(args[1], shellHome, applyLaunchctl)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", ui.SRedB.Render("error:"), err)
+			fmt.Fprintf(os.Stderr, "%s %v\n", ui.SRedB.Render(i18n.T("common.error_prefix")), err)
 			return 2
 		}
 		if norm == "off" {
-			fmt.Printf("%s 已关闭默认 Auto-compact 覆写 %s\n", ui.SGoodB.Render("✓"), ui.SDim.Render("（使用 agy 服务端默认值）"))
+			fmt.Printf("%s %s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.compact_off"), ui.SDim.Render(i18n.T("config.ok.compact_off_hint")))
 		} else {
-			fmt.Printf("%s 已设置默认 Auto-compact: %s %s\n", ui.SGoodB.Render("✓"), ui.SGoodB.Render(norm), ui.SDim.Render("("+vault.AutoCompactEnvKey+"="+norm+")"))
+			fmt.Printf("%s %s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.compact_set", ui.SGoodB.Render(norm)), ui.SDim.Render("("+vault.AutoCompactEnvKey+"="+norm+")"))
 		}
 		if len(touched) > 0 {
 			names := make([]string, 0, len(touched))
 			for _, p := range touched {
 				names = append(names, filepath.Base(p))
 			}
-			fmt.Printf("  %s 已同步 Shell 配置: %s\n", ui.SDim.Render("·"), ui.SDim.Render(strings.Join(names, ", ")+"（新开终端或 source 后对原生 agy 生效）"))
+			fmt.Printf("  %s %s %s\n", ui.SDim.Render("·"), ui.SDim.Render(i18n.T("config.ok.compact_synced", strings.Join(names, ", "))), ui.SDim.Render(i18n.T("config.ok.compact_synced_hint")))
 		}
 		return 0
 	}
@@ -645,29 +653,42 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		case "off", "false", "0":
 			disabled = true
 		default:
-			fmt.Fprintf(os.Stderr, "%s notify 仅支持 on 或 off（例如: agy-pro config notify off）\n", ui.SRedB.Render("error:"))
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("config.err.notify"))
 			return 2
 		}
 		_ = v.UpdateState(func(s *vault.State) {
 			s.NotifyDisabled = disabled
 		})
 		if disabled {
-			fmt.Printf("%s 已关闭长任务与切号桌面通知\n", ui.SGoodB.Render("✓"))
+			fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.notify_off"))
 		} else {
-			fmt.Printf("%s 已开启长任务与切号桌面通知 %s\n", ui.SGoodB.Render("✓"), ui.SDim.Render("(运行 >=30s 完成或 429 切号时触发)"))
+			fmt.Printf("%s %s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.notify_on"), ui.SDim.Render(i18n.T("config.ok.notify_on_hint")))
 		}
 		return 0
 	}
-	fmt.Fprintln(os.Stderr, "用法: agy-pro config [reserve <0-50> | auto-compact <80%|800K|700000|off> [--sync-shell] | notify <on|off>]")
+	if (args[0] == "lang" || args[0] == "language") && len(args) == 2 {
+		norm, ok := i18n.NormalizePref(args[1])
+		if !ok {
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("config.err.lang", args[1], strings.Join(i18n.Available(), ", ")))
+			return 2
+		}
+		_ = v.UpdateState(func(s *vault.State) {
+			s.Language = norm
+		})
+		i18n.SetPref(norm)
+		fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.lang_set", ui.SGoodB.Render(i18n.DisplayPref(norm))))
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, i18n.T("config.usage"))
 	return 2
 }
 
 func cmdAuth(v *vault.Vault, args []string) int {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Println("用法: agy-pro auth <login | import <路径> | rm <关键词|邮箱>>")
-		fmt.Println("  login           调用官方 agy acp --login 登录新账号并存入独立号池")
-		fmt.Println("  import <路径>   导入已有 antigravity-oauth-token 文件或目录")
-		fmt.Println("  rm <关键词>     从号池移除指定账号")
+		fmt.Println(i18n.T("auth.usage.title"))
+		fmt.Println(i18n.T("auth.usage.login"))
+		fmt.Println(i18n.T("auth.usage.import"))
+		fmt.Println(i18n.T("auth.usage.rm"))
 		return 0
 	}
 	switch args[0] {
@@ -678,26 +699,26 @@ func cmdAuth(v *vault.Vault, args []string) int {
 	case "rm", "remove":
 		return cmdRemove(v, args[1:])
 	default:
-		fmt.Fprintf(os.Stderr, "%s 未知 auth 子命令: %s（支持 login / import / rm）\n", ui.SRedB.Render("error:"), args[0])
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("auth.err.unknown", args[0]))
 		return 2
 	}
 }
 
 func cmdLogin(v *vault.Vault) int {
 	agyBin := vault.FindAgyBinary()
-	fmt.Println(ui.SHeadDim.Render("→") + " 正在调用官方 " + ui.SBold.Render("agy acp --login") + " 登录新 Google 账号" + ui.SDim.Render("（隔离临时目录，不影响系统钥匙串）"))
+	fmt.Println(ui.SHeadDim.Render("→") + " " + i18n.T("auth.login.start", ui.SBold.Render("agy acp --login")) + " " + ui.SDim.Render(i18n.T("auth.login.start_hint")))
 	email, err := v.LoginNewAccount(agyBin)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s 登录失败: %v\n", ui.SRedB.Render("✗"), err)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("✗"), i18n.T("auth.login.fail", err))
 		return 1
 	}
-	fmt.Printf("%s 已登录并存入独立号池: %s\n", ui.SGoodB.Render("✓"), ui.SBold.Render(email))
+	fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("auth.login.ok", ui.SBold.Render(email)))
 	return 0
 }
 
 func cmdImport(v *vault.Vault, args []string) int {
 	if len(args) != 1 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "用法: agy-pro auth import <token文件或目录>")
+		fmt.Fprintln(os.Stderr, i18n.T("auth.import.usage"))
 		return 2
 	}
 	p := args[0]
@@ -706,29 +727,29 @@ func cmdImport(v *vault.Vault, args []string) int {
 	}
 	abs, err := filepath.Abs(p)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s 路径无效: %v\n", ui.SRedB.Render("✗"), err)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("✗"), i18n.T("auth.import.bad_path", err))
 		return 1
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s 路径不存在: %s\n", ui.SRedB.Render("✗"), abs)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("✗"), i18n.T("auth.import.not_found", abs))
 		return 1
 	}
 	if !info.IsDir() {
 		email, err := v.ImportTokenFile(abs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s 导入失败: %v\n", ui.SRedB.Render("✗"), err)
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("✗"), i18n.T("auth.import.fail", err))
 			return 1
 		}
-		fmt.Printf("%s 已导入账号: %s\n", ui.SGoodB.Render("✓"), ui.SBold.Render(email))
+		fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("auth.import.ok_one", ui.SBold.Render(email)))
 		return 0
 	}
 	emails, err := v.ImportDirectory(abs)
 	if err != nil || len(emails) == 0 {
-		fmt.Fprintf(os.Stderr, "%s 未在 %s 下找到任何有效的 antigravity-oauth-token 文件。\n", ui.SAmberB.Render("!"), abs)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("auth.import.none_found", abs))
 		return 1
 	}
-	fmt.Printf("%s 已导入 %d 个账号到独立号池 %s\n", ui.SGoodB.Render("✓"), len(emails), ui.SDim.Render("("+v.AccountsDir+")"))
+	fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("auth.import.ok_many", len(emails), ui.SDim.Render("("+v.AccountsDir+")")))
 	for _, e := range emails {
 		fmt.Printf("  %s %s\n", ui.SGood.Render("·"), e)
 	}
@@ -737,7 +758,7 @@ func cmdImport(v *vault.Vault, args []string) int {
 
 func cmdRemove(v *vault.Vault, args []string) int {
 	if len(args) != 1 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "用法: agy-pro auth rm <关键词|邮箱>")
+		fmt.Fprintln(os.Stderr, i18n.T("auth.rm.usage"))
 		return 2
 	}
 	accounts := v.ListAccounts()
@@ -745,17 +766,17 @@ func cmdRemove(v *vault.Vault, args []string) int {
 	order := v.OrderedEmails(accounts, st)
 	email, errMsg := matchEmail(order, args[0])
 	if email == "" {
-		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("error:"), errMsg)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), errMsg)
 		return 1
 	}
 	v.RemoveAccount(email)
-	fmt.Printf("%s 已从号池移除: %s\n", ui.SGoodB.Render("✓"), email)
+	fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("auth.rm.ok", email))
 	return 0
 }
 
 func cmdUse(v *vault.Vault, args []string) int {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "用法: agy-pro use <关键词|邮箱> [agy原生参数...]")
+		fmt.Fprintln(os.Stderr, i18n.T("use.usage"))
 		return 2
 	}
 	if len(args) > 1 {
@@ -768,7 +789,7 @@ func cmdUse(v *vault.Vault, args []string) int {
 	order := v.OrderedEmails(accounts, st)
 	email, errMsg := matchEmail(order, args[0])
 	if email == "" {
-		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("error:"), errMsg)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), errMsg)
 		return 1
 	}
 	_ = v.UpdateState(func(s *vault.State) {
@@ -776,7 +797,7 @@ func cmdUse(v *vault.Vault, args []string) int {
 		s.Order = order
 		delete(s.Cooldowns, email)
 	})
-	fmt.Printf("%s 当前主号已切换为: %s\n", ui.SGoodB.Render("✓"), ui.SBold.Render(email))
+	fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("use.ok", ui.SBold.Render(email)))
 	return 0
 }
 
@@ -790,9 +811,9 @@ func cmdDoctor(v *vault.Vault) int {
 		c.Stdin = nil
 		c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 		out, _ := c.Output()
-		envLines = append(envLines, fmt.Sprintf("  %s 原生 agy    %s %s", ui.SGood.Render("✓"), agyBin, ui.SDim.Render("v"+strings.TrimSpace(string(out)))))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.agy_bin"), agyBin, ui.SDim.Render("v"+strings.TrimSpace(string(out)))))
 	} else {
-		envLines = append(envLines, fmt.Sprintf("  %s 原生 agy    %s", ui.SRed.Render("✗"), ui.SRed.Render("未找到: "+agyBin)))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SRed.Render("✗"), i18n.T("doctor.agy_bin"), ui.SRed.Render(i18n.T("doctor.agy_missing", agyBin))))
 		okAll = false
 	}
 
@@ -828,37 +849,38 @@ func cmdDoctor(v *vault.Vault) int {
 		}
 	}
 	if len(leaked) == 0 {
-		envLines = append(envLines, fmt.Sprintf("  %s 网络隔离    %s", ui.SGood.Render("✓"), ui.SDim.Render("干净（零中转直连 Google）")))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.net_iso"), ui.SDim.Render(i18n.T("doctor.net_clean"))))
 	} else {
-		envLines = append(envLines, fmt.Sprintf("  %s 网络隔离    %s", ui.SRed.Render("✗"), ui.SRed.Render(fmt.Sprintf("泄漏: %v", leaked))))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SRed.Render("✗"), i18n.T("doctor.net_iso"), ui.SRed.Render(i18n.T("doctor.net_leak", leaked))))
 		okAll = false
 	}
 	if forceFileEnv == "1" {
-		envLines = append(envLines, fmt.Sprintf("  %s 凭据隔离    %s", ui.SGood.Render("✓"), ui.SDim.Render("文件 token ("+vault.ForceFileTokenEnvKey+"=1)")))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.cred_iso"), ui.SDim.Render(i18n.T("doctor.cred_ok", vault.ForceFileTokenEnvKey))))
 	} else {
-		envLines = append(envLines, fmt.Sprintf("  %s 凭据隔离    %s", ui.SRed.Render("✗"), ui.SRed.Render("未设置 "+vault.ForceFileTokenEnvKey)))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SRed.Render("✗"), i18n.T("doctor.cred_iso"), ui.SRed.Render(i18n.T("doctor.cred_missing", vault.ForceFileTokenEnvKey))))
 		okAll = false
 	}
 	if forceOSC8Env == "0" {
-		envLines = append(envLines, fmt.Sprintf("  %s 重影防护    %s", ui.SGood.Render("✓"), ui.SDim.Render("关闭 OSC-8 ("+vault.ForceOSC8EnvKey+"=0)")))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.osc8"), ui.SDim.Render(i18n.T("doctor.osc8_ok", vault.ForceOSC8EnvKey))))
 	} else {
-		envLines = append(envLines, fmt.Sprintf("  %s 重影防护    %s", ui.SAmber.Render("!"), ui.SDim.Render("用户覆写 ("+vault.ForceOSC8EnvKey+"="+forceOSC8Env+")")))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SAmber.Render("!"), i18n.T("doctor.osc8"), ui.SDim.Render(i18n.T("doctor.osc8_override", vault.ForceOSC8EnvKey, forceOSC8Env))))
 	}
-	envLines = append(envLines, fmt.Sprintf("  %s 真实 HOME   %s", ui.SGood.Render("✓"), ui.SDim.Render(homeVal)))
-	envLines = append(envLines, fmt.Sprintf("  %s 模型配置    %s", ui.SGood.Render("✓"), ui.SDim.Render("遵循 agy 原生设置与 /model 切换（零强制覆盖）")))
+	envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.home"), ui.SDim.Render(homeVal)))
+	envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.model"), ui.SDim.Render(i18n.T("doctor.model_native"))))
 
-	envLines = append(envLines, fmt.Sprintf("  %s 提前切号    %s", ui.SGood.Render("✓"), ui.SDim.Render(fmt.Sprintf("水位线 %.0f%%", st.ReservePct))))
+	envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.reserve"), ui.SDim.Render(i18n.T("doctor.reserve_val", st.ReservePct))))
 	if compactEnv != "" {
-		envLines = append(envLines, fmt.Sprintf("  %s Auto-compact %s", ui.SGood.Render("✓"), ui.SDim.Render(compactEnv+" ("+vault.AutoCompactEnvKey+")")))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.compact"), ui.SDim.Render(compactEnv+" ("+vault.AutoCompactEnvKey+")")))
 	} else {
-		envLines = append(envLines, fmt.Sprintf("  %s Auto-compact %s", ui.SGood.Render("✓"), ui.SDim.Render("off（使用 agy 服务端默认）")))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.compact"), ui.SDim.Render(i18n.T("doctor.compact_off"))))
 	}
+	envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.lang"), ui.SDim.Render(i18n.DisplayPref(st.Language))))
 
 	schemaSt := sessions.CheckSchema("")
 	openSessions, _ := sessions.ListOpen("", "")
 	switch {
 	case !schemaSt.Exists:
-		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SAmber.Render("!"), ui.SDim.Render("未生成 conversation_summaries.db")))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SAmber.Render("!"), i18n.T("doctor.schema"), ui.SDim.Render(i18n.T("doctor.schema_missing"))))
 	case schemaSt.OK:
 		openRun := 0
 		for _, osess := range openSessions {
@@ -866,18 +888,18 @@ func cmdDoctor(v *vault.Vault) int {
 				openRun++
 			}
 		}
-		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SGood.Render("✓"), ui.SDim.Render(fmt.Sprintf("只读兼容 (%d 会话，当前打开 %d / %d 运行)", schemaSt.TotalTopLevel, len(openSessions), openRun))))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.schema"), ui.SDim.Render(i18n.T("doctor.schema_ok", schemaSt.TotalTopLevel, len(openSessions), openRun))))
 	default:
 		detail := schemaSt.Err
 		if len(schemaSt.Missing) > 0 {
-			detail = "缺少列: " + strings.Join(schemaSt.Missing, ",")
+			detail = i18n.T("doctor.schema_missing_cols", strings.Join(schemaSt.Missing, ","))
 		}
-		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SAmber.Render("!"), ui.SAmber.Render("上游结构变化 ("+detail+")")))
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SAmber.Render("!"), i18n.T("doctor.schema"), ui.SAmber.Render(i18n.T("doctor.schema_drift", detail))))
 	}
 
 	var acctLines []string
 	if len(order) == 0 {
-		acctLines = append(acctLines, fmt.Sprintf("  %s %s", ui.SRed.Render("✗"), ui.SAmber.Render("号池为空（请运行 agy-pro auth login）")))
+		acctLines = append(acctLines, fmt.Sprintf("  %s %s", ui.SRed.Render("✗"), ui.SAmber.Render(i18n.T("doctor.pool_empty"))))
 		okAll = false
 	}
 	for _, e := range order {
@@ -892,9 +914,9 @@ func cmdDoctor(v *vault.Vault) int {
 			mark = ui.SGoodB.Render("●")
 			name = ui.SBold.Render(e)
 		}
-		tokStatus := ui.SGood.Render("✓ refresh_token 正常")
+		tokStatus := ui.SGood.Render(i18n.T("doctor.tok_ok"))
 		if !good {
-			tokStatus = ui.SRed.Render("✗ token 异常")
+			tokStatus = ui.SRed.Render(i18n.T("doctor.tok_bad"))
 		}
 		acctLines = append(acctLines, fmt.Sprintf("  %s %s  %s", mark, ui.Pad(name, 26, ui.AlignLeft), tokStatus))
 	}
@@ -917,9 +939,9 @@ func cmdDoctor(v *vault.Vault) int {
 	var b strings.Builder
 	b.WriteString(badge + "  " + ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version+" · doctor") + "\n")
 	b.WriteString(ui.Hairline(innerW) + "\n")
-	b.WriteString(ui.SHead.Render("运行环境") + "\n")
+	b.WriteString(ui.SHead.Render(i18n.T("doctor.section.env")) + "\n")
 	b.WriteString(strings.Join(envLines, "\n") + "\n\n")
-	b.WriteString(ui.SHead.Render(fmt.Sprintf("独立号池 (%d)", len(order))) + " " + ui.SDim.Render(v.AccountsDir) + "\n")
+	b.WriteString(ui.SHead.Render(i18n.T("doctor.section.pool", len(order))) + " " + ui.SDim.Render(v.AccountsDir) + "\n")
 	b.WriteString(strings.Join(acctLines, "\n"))
 
 	fmt.Println(ui.RenderCard(b.String(), cardW, ui.ColorRule))
@@ -965,7 +987,7 @@ func parseRunFlags(argv []string) (runOptions, []string) {
 		case a == "--reserve" && i+1 < len(argv):
 			val, err := strconv.ParseFloat(strings.TrimSuffix(argv[i+1], "%"), 64)
 			if err != nil || val < 0 || val > 50 {
-				opts.flagErr = "reserve 需为 0 到 50 之间的数字（例如: --reserve 10）"
+				opts.flagErr = i18n.T("run.err.reserve_range")
 			} else {
 				opts.hasReserve = true
 				opts.reservePct = val
@@ -975,7 +997,7 @@ func parseRunFlags(argv []string) (runOptions, []string) {
 			raw := strings.TrimSuffix(strings.TrimPrefix(a, "--reserve="), "%")
 			val, err := strconv.ParseFloat(raw, 64)
 			if err != nil || val < 0 || val > 50 {
-				opts.flagErr = "reserve 需为 0 到 50 之间的数字（例如: --reserve 10）"
+				opts.flagErr = i18n.T("run.err.reserve_range")
 			} else {
 				opts.hasReserve = true
 				opts.reservePct = val
@@ -1015,15 +1037,16 @@ func isPrintModeArgs(args []string) bool {
 
 func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	if opts.flagErr != "" {
-		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("error:"), opts.flagErr)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), opts.flagErr)
 		return 2
 	}
 	accounts := v.ListAccounts()
 	st := v.LoadState()
 	order := v.OrderedEmails(accounts, st)
 	if len(order) == 0 {
-		fmt.Fprintf(os.Stderr, "%s 独立号池为空。请先运行 %s 或 %s。\n",
-			ui.SRedB.Render("error:"), ui.SHeadDim.Render("agy-pro auth login"), ui.SHeadDim.Render("agy-pro auth import <目录>"))
+		fmt.Fprintf(os.Stderr, "%s %s\n",
+			ui.SRedB.Render(i18n.T("common.error_prefix")),
+			i18n.T("common.pool_empty_err", ui.SHeadDim.Render("agy-pro auth login"), ui.SHeadDim.Render("agy-pro auth import <dir>")))
 		return 1
 	}
 
@@ -1040,7 +1063,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	if opts.explicitAccount != "" {
 		email, errMsg := matchEmail(order, opts.explicitAccount)
 		if email == "" {
-			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("error:"), errMsg)
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), errMsg)
 			return 1
 		}
 		currentEmail = email
@@ -1067,7 +1090,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			fmt.Fprintf(os.Stderr, "%s %s %s %s %s\n",
 				ui.Brand("agy-pro"),
 				ui.SDim.Render("·"),
-				ui.SAmber.Render(fmt.Sprintf("%s 剩余 <= %.0f%%", oldActive, reservePct)),
+				ui.SAmber.Render(i18n.T("run.proactive_low", oldActive, reservePct)),
 				ui.SDim.Render("→"),
 				ui.SGoodB.Render(currentEmail))
 		}
@@ -1078,7 +1101,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	}
 
 	if opts.refreshBefore {
-		ui.StderrProgress(fmt.Sprintf("正在刷新 %s 额度...", currentEmail), false)
+		ui.StderrProgress(i18n.T("run.refreshing_acct", currentEmail), false)
 		q := quota.ProbeAccount(accounts[currentEmail], agyBin, 35*time.Second)
 		ui.StderrProgress("", true)
 		_ = v.UpdateState(func(s *vault.State) {
@@ -1112,7 +1135,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			convID = saved
 			cleanArgs = runner.StripResumeAndPromptArgs(cleanArgs)
 		} else {
-			fmt.Fprintln(os.Stderr, ui.SDim.Render("agy-pro · 当前目录无最近会话记录，开启新会话"))
+			fmt.Fprintln(os.Stderr, ui.SDim.Render(i18n.T("run.no_last_conv")))
 		}
 	}
 
@@ -1127,7 +1150,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		acct := accounts[currentEmail]
 		if !printMode {
 			if meta, err := vault.ReadTokenMeta(acct.TokenFile); err == nil && meta.Expiry > 0 && meta.Expiry <= float64(time.Now().Unix())+60 {
-				ui.StderrProgress(fmt.Sprintf("静默刷新 %s 登录态...", currentEmail), false)
+				ui.StderrProgress(i18n.T("run.warming_tok", currentEmail), false)
 				qWarm := quota.ProbeAccountCLI(acct, agyBin, 20*time.Second)
 				ui.StderrProgress("", true)
 				if qWarm != nil && qWarm.Error == "" {
@@ -1146,12 +1169,12 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			var err error
 			releaseLaunch, err = v.ActivateTokenAndHold(acct)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s 切换 token 失败: %v\n", ui.SRedB.Render("error:"), err)
+				fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("run.activate_err", err))
 				return 1
 			}
 		} else {
 			if err := v.ActivateToken(acct); err != nil {
-				fmt.Fprintf(os.Stderr, "%s 切换 token 失败: %v\n", ui.SRedB.Render("error:"), err)
+				fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("run.activate_err", err))
 				return 1
 			}
 		}
@@ -1249,18 +1272,18 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 
 		now = float64(time.Now().UnixNano()) / 1e9
 		resetSec := 1800
-		kindLabel := "额度耗尽"
+		kindLabel := i18n.T("run.kind.exhausted")
 		cdReason := "429 verifying..."
 		spawnAsyncVerify := false
 
 		if res.ExhaustionKind == "fast" {
-			kindLabel = "触发 429 额度墙（秒切，后台核验精准重置时间）"
+			kindLabel = i18n.T("run.kind.fast")
 			cdReason = "429 fast-failover verifying"
 			spawnAsyncVerify = true
 		} else if res.VerifiedQuota != nil {
 			switch res.ExhaustionKind {
 			case "7d":
-				kindLabel = "Gemini 7天额度耗尽"
+				kindLabel = i18n.T("run.kind.7d")
 				cdReason = "7d quota exhausted"
 				if res.VerifiedQuota.D7Reset > now {
 					resetSec = int(res.VerifiedQuota.D7Reset - now)
@@ -1268,7 +1291,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 					resetSec = 3600
 				}
 			case "5h":
-				kindLabel = "Gemini 5小时额度耗尽"
+				kindLabel = i18n.T("run.kind.5h")
 				cdReason = "5h quota exhausted"
 				if res.VerifiedQuota.H5Reset > now {
 					resetSec = int(res.VerifiedQuota.H5Reset - now)
@@ -1276,7 +1299,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 					resetSec = 3600
 				}
 			case "claude-7d":
-				kindLabel = "Claude/GPT 7天额度耗尽"
+				kindLabel = i18n.T("run.kind.claude_7d")
 				cdReason = "claude-7d quota exhausted"
 				if res.VerifiedQuota.C7Reset > now {
 					resetSec = int(res.VerifiedQuota.C7Reset - now)
@@ -1284,7 +1307,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 					resetSec = 3600
 				}
 			case "claude-5h":
-				kindLabel = "Claude/GPT 5小时额度耗尽"
+				kindLabel = i18n.T("run.kind.claude_5h")
 				cdReason = "claude-5h quota exhausted"
 				if res.VerifiedQuota.C5Reset > now {
 					resetSec = int(res.VerifiedQuota.C5Reset - now)
@@ -1293,7 +1316,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 				}
 			}
 		} else {
-			kindLabel = "疑似额度耗尽（临时冷却）"
+			kindLabel = i18n.T("run.kind.suspected")
 			cdReason = "429 suspected quota"
 		}
 
@@ -1320,7 +1343,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 
 		nextEmail, msg := router.PickDrainWithReserve(order, st, quotas, true, reservePct, now)
 		if nextEmail == "" || nextEmail == currentEmail {
-			fmt.Fprintf(os.Stderr, "\n%s %s %s：%s\n", ui.SRedB.Render("✗"), oldEmail, kindLabel, msg)
+			fmt.Fprintf(os.Stderr, "\n%s %s %s: %s\n", ui.SRedB.Render("✗"), oldEmail, kindLabel, msg)
 			return 2
 		}
 		_ = v.UpdateState(func(s *vault.State) {
@@ -1339,8 +1362,8 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 					ui.SDim.Render(oldEmail+" "+kindLabel),
 					ui.SAccentB.Render("→"),
 					ui.SGoodB.Render(nextEmail))
-				fmt.Fprintf(os.Stderr, "%s 未定位到可安全续接的本地会话文件，已切至新主号并停止自动续跑（避免误开空对话）。请运行 %s 选择原会话继续。\n",
-					ui.SAmberB.Render("!"), ui.SHeadDim.Render("agy-pro resume"))
+				fmt.Fprintf(os.Stderr, "%s %s\n",
+					ui.SAmberB.Render("!"), i18n.T("run.failover_no_conv", ui.SHeadDim.Render("agy-pro resume")))
 				return 2
 			}
 		}
@@ -1367,7 +1390,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 
 		currentEmail = nextEmail
 		if !printMode {
-			promptInteractive = runner.ResumeContinuePrompt
+			promptInteractive = runner.ResumeContinuePrompt()
 		}
 	}
 	return 2
@@ -1448,20 +1471,20 @@ func bootstrapFirstRun(v *vault.Vault, argv []string, explicitDir bool) {
 	if err != nil || !configured || shouldQuietFirstRun(argv) {
 		return
 	}
-	msg := "首次启动已初始化默认配置 Auto-compact=" + vault.DefaultAutoCompact + "（零 dotfiles 修改）"
+	msg := i18n.T("run.first_run_init", vault.DefaultAutoCompact)
 	fmt.Fprintf(os.Stderr, "%s %s %s\n", ui.Brand("agy-pro"), ui.SDim.Render("·"), ui.SGood.Render(msg))
 }
 
 func cmdResume(v *vault.Vault, rest []string) int {
 	if len(rest) == 1 && (rest[0] == "-h" || rest[0] == "--help") {
-		fmt.Println("用法: agy-pro resume [会话ID] [agy原生参数...]")
-		fmt.Println("  不带会话ID时打开交互式会话选择器（默认当前目录，Tab 切换全部目录，支持实时搜索，Enter 当前号恢复，Ctrl+N 下个号恢复）。")
-		fmt.Println("  指定会话ID时直接恢复该会话，其余参数透传给原生 agy（如 --dangerously-skip-permissions）。")
+		fmt.Println(i18n.T("resume.usage.1"))
+		fmt.Println(i18n.T("resume.usage.2"))
+		fmt.Println(i18n.T("resume.usage.3"))
 		return 0
 	}
 	opts, pass := parseRunFlags(rest)
 	if opts.flagErr != "" {
-		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("error:"), opts.flagErr)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), opts.flagErr)
 		return 2
 	}
 	if len(pass) > 0 && !strings.HasPrefix(pass[0], "-") {
@@ -1489,7 +1512,7 @@ func cmdResume(v *vault.Vault, rest []string) int {
 
 			picked, pickErr := tui.RunSessionPicker(list, cwd, activeEmail)
 			if pickErr != nil {
-				fmt.Fprintf(os.Stderr, "%s 无法打开会话选择器: %v\n", ui.SRedB.Render("error:"), pickErr)
+				fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("resume.picker_err", pickErr))
 				return 1
 			}
 			if !picked.Selected {
@@ -1513,6 +1536,12 @@ func runCLI(argv []string, stateDir string) int {
 		stateDir = os.Getenv("AGY_PRO_STATE_DIR")
 	}
 	v := vault.New(stateDir)
+	// Load language preference without creating state directories on --help/--version or typos.
+	savedLang := ""
+	if _, err := os.Stat(v.StateFile); err == nil {
+		savedLang = v.LoadState().Language
+	}
+	i18n.Init(savedLang, v.StateDir)
 	bootstrapFirstRun(v, argv, explicitDir)
 	if len(argv) == 0 {
 		return cmdRun(v, nil, runOptions{autoSwitch: true})
@@ -1542,7 +1571,7 @@ func runCLI(argv []string, stateDir string) int {
 		return cmdResume(v, rest)
 	case "next":
 		if len(rest) == 1 && (rest[0] == "-h" || rest[0] == "--help") {
-			fmt.Println("用法: agy-pro next [agy原生参数...]\n  不带参数时仅切到下一个可用主号；带任意参数时直接切号并透传启动 agy（如 agy-pro next --dangerously-skip-permissions 或 agy-pro next -c）。")
+			fmt.Println(i18n.T("next.usage"))
 			return 0
 		}
 		if opts, pass, launch := parseNextArgs(rest); launch {
@@ -1555,7 +1584,7 @@ func runCLI(argv []string, stateDir string) int {
 		quotas := quota.Effective(st, now)
 		old := st.Active
 		if old == "" {
-			old = "(无)"
+			old = i18n.T("common.none")
 		}
 		nxt, msg := router.PickDrainWithReserve(order, st, quotas, true, st.ReservePct, now)
 		if nxt == "" {
@@ -1566,7 +1595,7 @@ func runCLI(argv []string, stateDir string) int {
 			s.Active = nxt
 			s.Order = order
 		})
-		fmt.Printf("%s 主号已切换: %s %s %s\n", ui.SGoodB.Render("✓"), ui.SDim.Render(old), ui.SAccentB.Render("→"), ui.SBold.Render(nxt))
+		fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("next.ok", ui.SDim.Render(old), ui.SAccentB.Render("→"), ui.SBold.Render(nxt)))
 		return 0
 	case "use":
 		return cmdUse(v, rest)
@@ -1580,11 +1609,11 @@ func runCLI(argv []string, stateDir string) int {
 
 	if !strings.HasPrefix(cmd, "-") {
 		sort.Strings(validSubcommands)
-		fmt.Fprintf(os.Stderr, "%s 未知子命令: %s\n", ui.SRedB.Render("error:"), cmd)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("common.unknown_subcmd", cmd))
 		if sug := suggestSubcommand(cmd); sug != "" {
-			fmt.Fprintf(os.Stderr, "最相似的命令是：%s\n", ui.SHeadDim.Render(sug))
+			fmt.Fprintf(os.Stderr, "%s\n", i18n.T("common.did_you_mean", ui.SHeadDim.Render(sug)))
 		}
-		fmt.Fprintf(os.Stderr, "%s\n", ui.SDim.Render("查看全部命令：agy-pro --help（如需显式透传参数给 agy，请用 agy-pro -- ...）"))
+		fmt.Fprintf(os.Stderr, "%s\n", ui.SDim.Render(i18n.T("common.see_help")))
 		return 2
 	}
 

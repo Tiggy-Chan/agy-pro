@@ -18,11 +18,13 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 )
 
 const (
 	Version              = "0.1.0-dev"
-	DefaultAutoCompact   = "80%"
+	DefaultAutoCompact   = "90%"
 	AutoCompactEnvKey    = "AGY_CLI_AUTO_COMPACT_OVERRIDE"
 	ForceFileTokenEnvKey = "AGY_CLI_FORCE_FILE_TOKEN_STORAGE"
 	ForceOSC8EnvKey      = "AGY_CLI_FORCE_OSC8"
@@ -72,6 +74,7 @@ type State struct {
 	ReservePct         float64              `json:"reserve_pct,omitempty"`
 	AutoCompact        string               `json:"auto_compact,omitempty"`
 	NotifyDisabled     bool                 `json:"notify_disabled,omitempty"`
+	Language           string               `json:"language,omitempty"`
 	FirstRunConfigured bool                 `json:"first_run_configured,omitempty"`
 	Cooldowns          map[string]*Cooldown `json:"cooldowns"`
 	Quotas             map[string]*Quota    `json:"quotas"`
@@ -225,7 +228,7 @@ func FmtLocalTime(epoch float64) string {
 
 func FmtAge(epoch float64, now float64) string {
 	if epoch <= 0 {
-		return "无缓存"
+		return i18n.T("vault.no_cache")
 	}
 	diff := int(now - epoch)
 	if diff < 0 {
@@ -233,13 +236,13 @@ func FmtAge(epoch float64, now float64) string {
 	}
 	switch {
 	case diff < 60:
-		return fmt.Sprintf("%ds前", diff)
+		return i18n.T("vault.age_s", diff)
 	case diff < 3600:
-		return fmt.Sprintf("%dm前", diff/60)
+		return i18n.T("vault.age_m", diff/60)
 	case diff < 86400:
-		return fmt.Sprintf("%dh前", diff/3600)
+		return i18n.T("vault.age_h", diff/3600)
 	default:
-		return fmt.Sprintf("%dd前", diff/86400)
+		return i18n.T("vault.age_d", diff/86400)
 	}
 }
 
@@ -402,7 +405,7 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 func NormalizeAutoCompact(raw string) (string, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return "", errors.New("不能为空（示例: 80%、800K、700000 或 off）")
+		return "", errors.New(i18n.T("vault.compact.empty"))
 	}
 	low := strings.ToLower(s)
 	if low == "off" || low == "default" || low == "none" {
@@ -412,7 +415,7 @@ func NormalizeAutoCompact(raw string) (string, error) {
 		numStr := strings.TrimSpace(strings.TrimSuffix(s, "%"))
 		v, err := strconv.ParseFloat(numStr, 64)
 		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 100 {
-			return "", errors.New("百分比需在 1% 到 100% 之间（例如: 80%）")
+			return "", errors.New(i18n.T("vault.compact.pct_range"))
 		}
 		if float64(int64(v)) == v {
 			return fmt.Sprintf("%d%%", int64(v)), nil
@@ -424,13 +427,13 @@ func NormalizeAutoCompact(raw string) (string, error) {
 		numStr := strings.TrimSpace(s[:len(s)-1])
 		v, err := strconv.ParseFloat(numStr, 64)
 		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 1e9 {
-			return "", fmt.Errorf("无效的 Auto-compact 值: %s（示例: 80%%、800K、0.5M、700000 或 off）", raw)
+			return "", fmt.Errorf("%s", i18n.T("vault.compact.invalid", raw))
 		}
 		return numStr + strings.ToUpper(string(last)), nil
 	}
 	n, err := strconv.ParseInt(s, 10, 64)
 	if err != nil || n <= 0 {
-		return "", fmt.Errorf("无效的 Auto-compact 值: %s（示例: 80%%、800K、0.5M、700000 或 off）", raw)
+		return "", fmt.Errorf("%s", i18n.T("vault.compact.invalid", raw))
 	}
 	return strconv.FormatInt(n, 10), nil
 }
@@ -827,7 +830,7 @@ func (v *Vault) ImportTokenFile(srcPath string) (string, error) {
 	}
 	meta, err := ReadTokenMeta(srcPath)
 	if err != nil || meta.Email == "" {
-		return "", fmt.Errorf("无效的 agy token 文件: %s", srcPath)
+		return "", fmt.Errorf("%s", i18n.T("vault.import.invalid_token", srcPath))
 	}
 	sid := SlotIDForEmail(meta.Email)
 	homeDir := filepath.Join(v.AccountsDir, sid)
@@ -943,11 +946,11 @@ func (v *Vault) LoginNewAccount(agyBin string) (string, error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("agy acp --login 失败: %w", err)
+		return "", fmt.Errorf(i18n.T("vault.login.failed"), err)
 	}
 	tok := filepath.Join(tmpHome, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 	if _, err := os.Stat(tok); err != nil {
-		return "", errors.New("登录未生成 antigravity-oauth-token 文件")
+		return "", errors.New(i18n.T("vault.login.no_token"))
 	}
 	return v.ImportTokenFile(tok)
 }

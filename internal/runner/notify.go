@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 )
 
 const DefaultNotifyMinDuration = 30 * time.Second
@@ -56,9 +58,9 @@ func (n *Notifier) Observe(title string, running bool, now time.Time) {
 		if elapsed >= n.minDuration {
 			label := sanitizeTabTitle(title)
 			if label == "" {
-				label = "当前会话"
+				label = i18n.T("notify.default_session")
 			}
-			n.send("agy-pro · 任务已完成", fmt.Sprintf("✦ %s（耗时 %s）", label, fmtNotifyDuration(elapsed)))
+			n.send(i18n.T("notify.done_title"), i18n.T("notify.done_body", label, fmtNotifyDuration(elapsed)))
 		}
 	}
 }
@@ -72,7 +74,7 @@ func (n *Notifier) NotifyFailover(oldEmail, newEmail, title string) {
 	if label != "" {
 		body += " · " + label
 	}
-	n.send("agy-pro · 已自动切号续跑", body)
+	n.send(i18n.T("notify.failover_title"), body)
 }
 
 func (n *Notifier) send(title, body string) {

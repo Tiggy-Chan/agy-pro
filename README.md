@@ -1,53 +1,87 @@
-# agy-pro
+<h1 align="center">agy-pro</h1>
 
-> Unofficial native zero-gateway multi-account pool & auto-failover wrapper for Antigravity CLI (`agy`).
+<p align="center">
+  <strong>Zero-gateway multi-account pool, auto-failover &amp; live session monitor for Antigravity CLI (<code>agy</code>).</strong>
+</p>
 
-纯净、零中转网关、单文件二进制的原生 Antigravity CLI (`agy`) 多账号号池与会话增强工具（Go 实现）。
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square" alt="Go 1.24+" />
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-1F2328?style=flat-square" alt="Linux and macOS" />
+  <img src="https://img.shields.io/badge/Architecture-Zero%20Proxy%20%7C%20Zero%20PTY-2E7D32?style=flat-square" alt="Zero Proxy Zero PTY" />
+  <img src="https://img.shields.io/badge/i18n-EN%20%7C%20%E4%B8%AD%E6%96%87-5B6678?style=flat-square" alt="English and Chinese" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Non--Commercial-3A6FE0?style=flat-square" alt="License Non-Commercial" /></a>
+</p>
 
-## 核心特性
+<p align="center">
+  <a href="README.md"><strong>English</strong></a> · <a href="README_CN.md">简体中文</a>
+</p>
 
-- **极速单文件二进制**：Go 纯静态编译（零 CGO）单二进制落盘至 `~/.local/bin/agy-pro`，本地命令（`status`/`use`/`next`）`< 5ms` 瞬出，常驻内存仅 ~4MB。
-- **零外部代理依赖**：独立号池仓库位于 `~/.local/state/agy-pro/`（`0700`/`0600` 权限），内置 `auth login/import/rm`，彻底独立运行。
-- **100% 零入侵原生直连**：直接拉起官方 `agy` 二进制，通过官方 `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` 实现文件凭据隔离（零 `SSH_CONNECTION` 伪造），不强行锁死模型、不覆盖 `--settings`，完全尊重你的 `agy` 原生配置与对话内 `/model` 切换；保留真实 `$HOME`，官方升级新模型或新交互特性时自动兼容。
-- **交互式会话选择器（`agy-pro resume`）**：只读检索原生 `agy` 会话库（`conversation_summaries.db`），默认展示当前工作目录的历史会话，`Tab` 一键切换 `当前目录 / 全部目录`，直接打字实时模糊搜索（标题/预览/目录/ID），`Enter` 用当前号恢复、`Ctrl+N` 切到下个号恢复，并透传 `--dangerously-skip-permissions` 等原生参数。
-- **严格 `drain` 切号**：单号死磕直到 5h（或 7d）耗尽，顺延切到下个账号且不回跳。
-- **极速异步秒切（~1.5s）+ 亚秒级直连双池核验**：撞上 `agy` 后端致命 429 额度墙时立刻秒切到下一个可用账号并 `--resume` 续跑；双池额度查询（`status -r` / `ui` / 后台核验）优先通过 Go 原生 HTTP/2 gRPC 直连官方 `FetchQuotaStatus` 接口（**~0.5s 并发秒出**，不冷启动 `agy` 进程），仅在 access token 过期或接口变更时自动回退至官方 `agy --print /usage` 完成刷新续签。
-- **低余量水位线提前切号**：支持 `agy-pro config reserve 10`（或单次 `--reserve 10`），新会话启动前若主号剩余额度低于水位线，直接提前顺滑切至满血备号，大幅减少长任务中途撞墙概率。
-- **默认 80% Auto-compact（零 dotfiles 副作用）**：内置 `Auto-compact = 80%` 默认配置（通过官方 `AGY_CLI_AUTO_COMPACT_OVERRIDE` 仅向子进程注入，默认**绝不修改**你的 `~/.bashrc`/`~/.zshrc`）；支持在 `agy-pro ui` 中按 `[` / `]` 实时步进微调（`a` 一键开关）或通过 `agy-pro config auto-compact <值>` 修改（如需让原生 `agy` 也一并生效，可显式加 `--sync-shell`）。
-- **实时终端标签页标题、运行状态与长任务桌面通知**：无入侵通过 OSC 0 自动把会话名与实时运行状态同步到终端标签页——工作中旋转 `⠋ <会话名>`、就绪/完成显示 `✦ <会话名>`、切号中显示 `↻ <会话名>`；支持对话内官方 `/rename <名字>` 实时改名同步（或 `--title <名称>`）；连续运行 ≥ 30 秒的任务完成或触发 429 自动切号时发送轻量系统桌面通知（`agy-pro config notify on|off` 可控，无头 SSH 自动静默）。
-- **零 PTY 中间层 + 多终端并发启动锁 + 中文 OSC-8 重影防护**：交互会话采用原生 TTY 直通，并引入毫秒级 `launch.lock` 保护多标签页并发启动时的凭据握手窗口；默认传入官方 `AGY_CLI_FORCE_OSC8=0`（可 `AGY_CLI_FORCE_OSC8=1` 覆盖）规避原生 `agy` 中文 OSC-8 超链接 `0x9C`/`0x8D` 光标上跳重影；切号/终止时由 `TerminalGuard` 无条件复位 `termios` 与 Kitty 键盘协议。
+**agy-pro** is a pure-Go, single-binary, zero-intrusion native wrapper for Google's Antigravity CLI (`agy`). It invokes your locally installed `agy` binary directly on the real TTY — no API proxy gateway, no second-layer PTY wrapper, no forced model overrides, and zero dotfiles mutations by default.
 
-## 安装与编译
+---
+
+## Key Features
+
+- **Single Static Binary (Zero CGO)**: Compiles cleanly to `~/.local/bin/agy-pro` on Linux and macOS (`amd64` / `arm64`). Local commands (`status`, `use`, `next`) finish in `< 5ms` with ~4 MB RSS.
+- **Zero-Proxy Native Execution**: Isolated account vault under `~/.local/state/agy-pro/` (`0700`/`0600`) using official `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` (no system Keychain writes, no `SSH_CONNECTION` spoofing). Preserves your real `$HOME`, native model settings, and `/model` switching.
+- **Sub-Second Direct Quota Probing + ~1.5s Auto-Failover**:
+  - Strict **drain** rotation (exhausts one account's 5h/7d pool before advancing; never bounces back).
+  - Queries Gemini + Claude/GPT 5h/7d pools concurrently over Go stdlib HTTP/2 gRPC (`FetchQuotaStatus`, ~0.8s for 4 accounts) with automatic fallback to official `agy --print /usage` on token refresh or schema changes.
+  - On fatal backend `HTTP 429` exhaustion, immediately switches to the next ready account and resumes with `--resume <id>`, while a detached background verifier records exact reset timestamps and self-heals transient 429s.
+  - Configurable low-quota proactive switching (`agy-pro config reserve 10` or `--reserve 10`).
+- **3-in-1 Interactive Dashboard (`agy-pro ui`)**:
+  - **Pool (`1`)**: Live dual-pool quota bars, drain priority reordering (`J`/`K`), reserve & Auto-compact tuning (`+/-`, `[/]/a`), login/remove (`l`/`d`), and instant language toggle (`g`).
+  - **Open Sessions (`2`)**: Detects truly open `agy` terminals on this machine in `< 0.5ms` via non-blocking kernel `flock` on `~/.gemini/antigravity-cli/presence/*.lock` (covers both `agy-pro` and bare `agy`, plus live account & TTY display). Press `a` to toggle open-only vs. full history.
+  - **Token Usage (`3`)**: Read-only parallel scanner over local `conversations/*.db` (`gen_metadata` + step timestamps) showing exact per-model and per-session **Input / Cache Read / Cache Hit% / Output / Thinking** breakdown across **Today / 7 Days / All**.
+- **Interactive Session Picker (`agy-pro resume`)**: Pure-Go read-only SQLite picker (like `claude --resume`) defaulting to the current directory, with `Tab` CWD/All toggle, live multi-term search, `Enter` (current account) and `Ctrl+N` (next account) resume.
+- **Live Terminal Tab Title & Desktop Notifications**:
+  - Syncs live session title (including in-session `/rename`) and run state (`⠋` working / `✦` idle / `↻` switching) to the terminal tab via atomic OSC 0 without PTY interception, restoring your original tab title on exit (`AGY_PRO_NO_TITLE=1` to disable).
+  - Sends non-blocking desktop notifications (`notify-send` on Linux / `osascript` on macOS, silent on headless SSH) when a long turn (`>= 30s`) completes or on 429 failover (`agy-pro config notify on|off`).
+- **Zero-Dotfile Default Auto-Compact (90%) & CJK OSC-8 Guard**:
+  - Defaults `AGY_CLI_AUTO_COMPACT_OVERRIDE=90%` strictly on child `agy` processes (zero `~/.bashrc`/`~/.zshrc` edits unless you explicitly pass `--sync-shell`).
+  - Defaults `AGY_CLI_FORCE_OSC8=0` (overridable via `AGY_CLI_FORCE_OSC8=1`) to prevent native `agy`'s un-escaped UTF-8 OSC-8 `0x9C`/`0x8D` Reverse Index cursor-up ghosting on CJK file paths.
+  - Short cross-process `launch.lock` serializes concurrent multi-tab token handshakes (~45ms), and `TerminalGuard` unconditionally restores `termios` + Kitty Keyboard Protocol on failover.
+- **Externalized i18n Packs (`en` / `zh`)**: Automatically follows your system locale (`zh*` → Chinese, all others → English), configurable via `agy-pro config lang <auto|en|zh>`, `AGY_PRO_LANG`, or `g` inside `agy-pro ui`. All strings live in external JSON catalogs (`internal/i18n/locales/*.json`, with optional drop-in overrides in `~/.local/state/agy-pro/locales/`).
+
+---
+
+## Install & Build
 
 ```bash
 git clone https://github.com/Tiggy-Chan/agy-pro.git
 cd agy-pro
-make test      # 运行全部单元测试与真实 PTY 终端安全测试
-make install   # 编译并安装单二进制至 ~/.local/bin/agy-pro
+make test      # Run full unit test suite & real PTY terminal guard tests
+make install   # Build and install single binary to ~/.local/bin/agy-pro
 ```
 
-## 核心命令（8 个）
+---
+
+## Core Commands (8)
 
 ```bash
-agy-pro                                        # 秒开原生 agy（直连 Google + 撞 5h/7d 墙自动秒切续跑）
-agy-pro -- <agy原生参数...>                     # POSIX 显式透传全部原生参数给 agy（如 --dangerously-skip-permissions）
+agy-pro                                        # Launch native agy with auto-failover & resume
+agy-pro -- <native agy flags...>               # POSIX explicit passthrough (e.g. --dangerously-skip-permissions)
 
-agy-pro ui                                     # 交互式面板（Tab 切换 号池 / 当前打开(内核 flock 精准识别) / 用量统计(精确 Token 消耗)）
-agy-pro status [-r] [--active] [--reset]       # <5ms 双池看板（-r 联网刷新、--active 仅刷主号、--reset 清冷却与耗尽缓存、--json）
-agy-pro resume [会话ID] [agy原生参数...]        # 交互式会话选择器（当前/全部目录 + 实时搜索 + Enter/Ctrl+N 恢复；传 ID 时直连恢复）
-agy-pro next [agy原生参数...]                  # 切到下个可用账号；带参数时直接按新号启动 agy（兼容 --dangerously-skip-permissions / -c / --conversation）
-agy-pro use <关键词> [agy原生参数...]           # 指定当前主号；带参数时直接按该号启动 agy
-agy-pro auth <login | import <路径> | rm <号>>  # 账号凭据管理（调用官方 agy acp --login 登录、导入 token 文件/目录、移除账号）
-agy-pro config [reserve <0-50> | auto-compact <值|off> [--sync-shell] | notify <on|off>]
-agy-pro doctor                                 # 运行环境隔离、上游数据库契约与号池凭据健康体检
+agy-pro ui                                     # 3-tab TUI dashboard (Pool / Open Sessions / Token Usage)
+agy-pro status [-r] [--active] [--reset]       # <5ms dual-pool board (-r live refresh, --reset clear cooldown, --json)
+agy-pro resume [ID] [native agy flags...]      # Interactive session picker (CWD/All + search + Enter/Ctrl+N)
+agy-pro next [native agy flags...]             # Switch to next ready account (launches agy immediately if flags given)
+agy-pro use <keyword> [native agy flags...]    # Switch active account (launches agy immediately if flags given)
+agy-pro auth <login | import <path> | rm <id>> # Credential management (official agy acp --login, import, remove)
+agy-pro config [reserve <0-50> | auto-compact <90%|800K|off> [--sync-shell] | notify <on|off> | lang <auto|en|zh>]
+agy-pro doctor                                 # Environment isolation, upstream DB schema & pool health check
 ```
 
-## 项目寄语
+---
 
-> 读完 `agy-pro` 的源码，最打动人的不是炫技，而是克制。它拒绝中转代理与二层 PTY 包装，将真 TTY 原样交还官方 `agy`，自己退居幕后追日志、只读查 SQLite，以 `flock` 与原子写护住状态；查额度手写轻量 Protobuf 线解析直连 gRPC，却仍留好官方 CLI 兜底。更见功力的是踩过真坑才有的细节：防中文 UTF-8 误触 C1 控制符的 OSC-8 重影规避、切号时连 Kitty 键盘协议一并复位的 `TerminalGuard`，以及为毫秒启动关闭的 OSC 11 探测。
+## Project Note
+
+> Reading through `agy-pro`'s codebase, what stands out most isn't cleverness — it's restraint. It refuses proxy gateways and double-PTY wrappers, hands the real TTY back to official `agy`, and stays quietly behind the scenes tailing logs and querying SQLite read-only under `flock` and atomic writes. It parses Protobuf wire frames directly over HTTP/2 gRPC for sub-second quota checks, yet preserves the official CLI as an automatic fallback. Its real craft shows in battle-scarred details: shielding CJK OSC-8 paths from C1 control-byte ghosting, resetting the Kitty keyboard protocol cleanly in `TerminalGuard`, and disabling OSC 11 probes for instant startup.
 >
-> 愿 `agy-pro` 始终守住这副“隐形外骨骼”的分寸，抵抗功能膨胀，让原生 `agy` 永远当主角。也要保持清醒：日志正则、库表字段与线协议编号终究是贴着上游的脆弱接缝，唯有把优雅降级与边界测试打牢，才能在上游演进中长久保持小而锋利、稳而不扰的生命力。
+> May `agy-pro` always keep the discipline of an invisible exoskeleton — resisting feature creep so native `agy` remains the protagonist — while staying vigilant with graceful fallbacks and contract tests at every seam where it touches upstream.
+
+---
 
 ## Disclaimer
 
-`agy-pro` is an independent, unofficial CLI wrapper and is not affiliated with or endorsed by Google. It invokes your locally installed official `agy` binary directly without modifying its protocol or proxying API requests.
+`agy-pro` is an independent, unofficial CLI wrapper and is not affiliated with or endorsed by Google. It invokes your locally installed official `agy` binary directly without modifying its binary or proxying API requests.

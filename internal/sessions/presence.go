@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
@@ -120,7 +121,7 @@ func ListOpen(dbPath, presenceDir string) ([]Session, error) {
 						if pClean != "" {
 							tClean = pClean
 						} else {
-							tClean = "(新建会话)"
+							tClean = i18n.T("sessions.new_session")
 						}
 					}
 					up := strings.ToUpper(strings.TrimSpace(status))
@@ -149,7 +150,7 @@ func ListOpen(dbPath, presenceDir string) ([]Session, error) {
 		} else {
 			out = append(out, Session{
 				ID:    id,
-				Title: "(新建会话)",
+				Title: i18n.T("sessions.new_session"),
 				Open:  true,
 			})
 		}

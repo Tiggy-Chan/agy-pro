@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/usage"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
@@ -76,35 +77,35 @@ func TestDashboardAutoCompactKeybinds(t *testing.T) {
 	v := vault.New(dir)
 	m := newModel(v, "/usr/bin/true")
 
-	if got := vault.DisplayAutoCompact(m.state); got != "80%" {
-		t.Fatalf("expected default compact 80%%, got %q", got)
+	if got := vault.DisplayAutoCompact(m.state); got != "90%" {
+		t.Fatalf("expected default compact 90%%, got %q", got)
 	}
-	if !strings.Contains(m.View(), "compact 80%") {
-		t.Fatalf("expected View() header to show compact 80%%")
+	if !strings.Contains(m.View(), "compact 90%") {
+		t.Fatalf("expected View() header to show compact 90%%")
 	}
 
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
 	m = next.(model)
-	if got := vault.DisplayAutoCompact(m.state); got != "75%" {
-		t.Fatalf("expected [ to step down to 75%%, got %q", got)
+	if got := vault.DisplayAutoCompact(m.state); got != "85%" {
+		t.Fatalf("expected [ to step down to 85%%, got %q", got)
 	}
 
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	m = next.(model)
-	if got := vault.DisplayAutoCompact(m.state); got != "80%" {
-		t.Fatalf("expected ] to step up to 80%%, got %q", got)
+	if got := vault.DisplayAutoCompact(m.state); got != "90%" {
+		t.Fatalf("expected ] to step up to 90%%, got %q", got)
 	}
 
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	m = next.(model)
 	if got := vault.DisplayAutoCompact(m.state); got != "off" {
-		t.Fatalf("expected a to toggle off from 80%%, got %q", got)
+		t.Fatalf("expected a to toggle off from 90%%, got %q", got)
 	}
 
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	m = next.(model)
-	if got := vault.DisplayAutoCompact(m.state); got != "80%" {
-		t.Fatalf("expected a to restore 80%% from off, got %q", got)
+	if got := vault.DisplayAutoCompact(m.state); got != "90%" {
+		t.Fatalf("expected a to restore 90%% from off, got %q", got)
 	}
 }
 
@@ -203,6 +204,8 @@ func TestSessionPickerBehavior(t *testing.T) {
 }
 
 func TestDashboardTabSessionsMonitor(t *testing.T) {
+	i18n.SetPref("zh")
+	t.Cleanup(func() { i18n.SetPref("auto") })
 	tmp := t.TempDir()
 	t.Setenv("HOME", filepath.Join(tmp, "empty-home"))
 	v := vault.New(filepath.Join(tmp, "pool"))
@@ -234,7 +237,11 @@ func TestDashboardTabSessionsMonitor(t *testing.T) {
 	}
 }
 
-func TestDashboardUsageTab(t *testing.T) {
+func TestDashboardUsageTabAndLanguageKey(t *testing.T) {
+	t.Setenv("AGY_PRO_LANG", "")
+	i18n.SetPref("en")
+	t.Cleanup(func() { i18n.SetPref("auto") })
+
 	tmp := t.TempDir()
 	t.Setenv("HOME", filepath.Join(tmp, "empty-home"))
 	v := vault.New(filepath.Join(tmp, "pool"))
@@ -247,7 +254,7 @@ func TestDashboardUsageTab(t *testing.T) {
 		t.Fatalf("expected key 3 to open tabUsage and trigger async scan, got tab=%d loading=%v cmd=%v", m.tab, m.usageLoading, cmd)
 	}
 
-	// Simulate scan completion
+	// Simulate scan completion in English
 	rep := usage.Report{
 		Range:       usage.RangeToday,
 		ActiveConvs: 2,
@@ -256,17 +263,26 @@ func TestDashboardUsageTab(t *testing.T) {
 			{Model: "gemini-4-neon", Stats: usage.BucketStats{Calls: 12, Input: 50000, CacheRead: 950000, Output: 12000, Thinking: 4000}},
 		},
 		BySession: []usage.SessionRow{
-			{ConvID: "cccc3333-0000-4000-8000-000000000003", Title: "Token 消耗统计测试", Stats: usage.BucketStats{Calls: 12, Input: 50000, CacheRead: 950000, Output: 12000}},
+			{ConvID: "cccc3333-0000-4000-8000-000000000003", Title: "Token Usage Test", Stats: usage.BucketStats{Calls: 12, Input: 50000, CacheRead: 950000, Output: 12000}},
 		},
 		ElapsedMs: 18,
 	}
 	next, _ = m.Update(usageLoadedMsg{rep: rep, autoTried: true})
 	m = next.(model)
-	view := m.View()
-	for _, want := range []string{"用量统计", "1.01M", "95.0%", "gemini-4-neon", "Token 消耗统计测试"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("expected Usage tab view to contain %q, got:\n%s", want, view)
+	viewEN := m.View()
+	for _, want := range []string{"Usage", "1.01M", "95.0%", "gemini-4-neon", "Token Usage Test"} {
+		if !strings.Contains(viewEN, want) {
+			t.Fatalf("expected EN Usage tab view to contain %q, got:\n%s", want, viewEN)
 		}
+	}
+
+	// Press 'g' to toggle language live in TUI (auto -> en -> zh)
+	_ = v.UpdateState(func(s *vault.State) { s.Language = "en" })
+	m.reload()
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	m = next.(model)
+	if i18n.Lang() != "zh" || !strings.Contains(m.View(), "用量统计") {
+		t.Fatalf("expected g to switch TUI live from en -> zh, got lang=%q view:\n%s", i18n.Lang(), m.View())
 	}
 
 	// Enter resumes top-burning session

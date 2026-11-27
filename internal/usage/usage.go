@@ -12,6 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
@@ -27,11 +28,11 @@ const (
 func (r RangeKind) Label() string {
 	switch r {
 	case RangeToday:
-		return "今日"
+		return i18n.T("usage.range.today")
 	case Range7Days:
-		return "近 7 天"
+		return i18n.T("usage.range.7d")
 	default:
-		return "全部"
+		return i18n.T("usage.range.all")
 	}
 }
 

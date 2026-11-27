@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
 	"github.com/Tiggy-Chan/agy-pro/internal/router"
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
@@ -334,7 +335,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if cmds := m.enqueueProbes(stale); len(cmds) > 0 {
-			m.toast = fmt.Sprintf("正在后台核对 %d 个账号实时额度...", m.pendingRefreshCount())
+			m.toast = i18n.T("ui.toast.auto_refresh", m.pendingRefreshCount())
 			m.toastStyle = ui.SHeadDim
 			return m, tea.Batch(cmds...)
 		}
@@ -355,14 +356,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.toast = fmt.Sprintf("! %s: %s", msg.email, msg.q.Error)
 				m.toastStyle = ui.SAmber
 			} else if clearedCooldown {
-				m.toast = fmt.Sprintf("✓ %s 额度已恢复（自动清除旧冷却）", msg.email)
+				m.toast = i18n.T("ui.toast.recovered", msg.email)
 				m.toastStyle = ui.SGood
 			} else {
-				m.toast = "✓ 额度已刷新"
+				m.toast = i18n.T("ui.toast.refreshed")
 				m.toastStyle = ui.SGood
 			}
 		} else {
-			m.toast = fmt.Sprintf("正在刷新实时额度（剩余 %d 个）...", rem)
+			m.toast = i18n.T("ui.toast.refreshing_rem", rem)
 			m.toastStyle = ui.SHeadDim
 		}
 		if len(nextCmds) > 0 {
@@ -378,12 +379,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmDel = ""
 				m.vault.RemoveAccount(target)
 				m.reload()
-				m.toast = fmt.Sprintf("✓ 已移除账号: %s", target)
+				m.toast = i18n.T("ui.toast.removed", target)
 				m.toastStyle = ui.SGood
 				return m, nil
 			}
 			m.confirmDel = ""
-			m.toast = "已取消移除"
+			m.toast = i18n.T("ui.toast.remove_cancelled")
 			m.toastStyle = ui.SDim
 			return m, nil
 		}
@@ -391,6 +392,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			m.result = Result{Action: ActionNone}
 			return m, tea.Quit
+
+		case "g":
+			nextLang := i18n.NextPref(m.state.Language)
+			_ = m.vault.UpdateState(func(s *vault.State) { s.Language = nextLang })
+			i18n.SetPref(nextLang)
+			m.reload()
+			m.toast = i18n.T("ui.toast.lang_set", i18n.DisplayPref(nextLang))
+			m.toastStyle = ui.SGood
+			return m, nil
 
 		case "tab":
 			return m.switchTab((m.tab + 1) % 3)
@@ -422,7 +432,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
 			case "r":
 				m.usageLoading = true
-				m.toast = "正在重新统计本地 Token 用量..."
+				m.toast = i18n.T("ui.toast.usage_scanning")
 				m.toastStyle = ui.SHeadDim
 				return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
 			case "up", "k":
@@ -475,7 +485,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "r":
 				m.reloadSessions()
-				m.toast = "✓ 已刷新活跃会话"
+				m.toast = i18n.T("ui.toast.sessions_refreshed")
 				m.toastStyle = ui.SGood
 				return m, nil
 			case "a":
@@ -484,9 +494,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sessOffset = 0
 				m.reloadSessions()
 				if m.showAllSess {
-					m.toast = "已切换为：含历史会话（打开中置顶）"
+					m.toast = i18n.T("ui.toast.scope_all")
 				} else {
-					m.toast = "已切换为：仅显示当前真实打开的会话"
+					m.toast = i18n.T("ui.toast.scope_open")
 				}
 				m.toastStyle = ui.SHeadDim
 				return m, nil
@@ -528,7 +538,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				newOrd := append([]string(nil), m.order...)
 				_ = m.vault.UpdateState(func(s *vault.State) { s.Order = newOrd })
 				m.reload()
-				m.toast = "✓ 已上移 drain 优先级"
+				m.toast = i18n.T("ui.toast.order_up")
 				m.toastStyle = ui.SGood
 			}
 			return m, nil
@@ -540,7 +550,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				newOrd := append([]string(nil), m.order...)
 				_ = m.vault.UpdateState(func(s *vault.State) { s.Order = newOrd })
 				m.reload()
-				m.toast = "✓ 已下移 drain 优先级"
+				m.toast = i18n.T("ui.toast.order_down")
 				m.toastStyle = ui.SGood
 			}
 			return m, nil
@@ -569,7 +579,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					delete(s.Cooldowns, chosen)
 				})
 				m.reload()
-				m.toast = fmt.Sprintf("✓ 已设 %s 为当前主号", chosen)
+				m.toast = i18n.T("ui.toast.set_active", chosen)
 				m.toastStyle = ui.SGood
 			}
 			return m, nil
@@ -580,7 +590,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			cmds := m.enqueueProbes(m.order)
 			if len(cmds) > 0 {
-				m.toast = fmt.Sprintf("正在刷新 %d 个账号实时额度...", m.pendingRefreshCount())
+				m.toast = i18n.T("ui.toast.refreshing_n", m.pendingRefreshCount())
 				m.toastStyle = ui.SHeadDim
 				return m, tea.Batch(cmds...)
 			}
@@ -591,7 +601,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				e := m.order[m.cursor]
 				cmds := m.enqueueProbes([]string{e})
 				if len(cmds) > 0 {
-					m.toast = fmt.Sprintf("正在刷新 %s 实时额度...", e)
+					m.toast = i18n.T("ui.toast.refreshing_one", e)
 					m.toastStyle = ui.SHeadDim
 					return m, tea.Batch(cmds...)
 				}
@@ -611,7 +621,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			})
 			m.reload()
-			m.toast = "✓ 已清空本地冷却与耗尽缓存"
+			m.toast = i18n.T("ui.toast.cleared_cd")
 			m.toastStyle = ui.SGood
 			return m, nil
 
@@ -622,7 +632,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			_ = m.vault.UpdateState(func(s *vault.State) { s.ReservePct = nextVal })
 			m.reload()
-			m.toast = fmt.Sprintf("✓ 低余量提前切号水位线: %.0f%%", nextVal)
+			m.toast = i18n.T("ui.toast.reserve_set", nextVal)
 			m.toastStyle = ui.SGood
 			return m, nil
 
@@ -633,7 +643,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			_ = m.vault.UpdateState(func(s *vault.State) { s.ReservePct = nextVal })
 			m.reload()
-			m.toast = fmt.Sprintf("✓ 低余量提前切号水位线: %.0f%%", nextVal)
+			m.toast = i18n.T("ui.toast.reserve_set", nextVal)
 			m.toastStyle = ui.SGood
 			return m, nil
 
@@ -658,7 +668,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.order) > 0 {
 				target := m.order[m.cursor]
 				m.confirmDel = target
-				m.toast = fmt.Sprintf("! 确认移除 %s？按 y/d 确认，其他键取消", target)
+				m.toast = i18n.T("ui.toast.confirm_del", target)
 				m.toastStyle = ui.SAmberB
 			}
 			return m, nil
@@ -681,9 +691,9 @@ func (m *model) applyAutoCompact(raw string) {
 	}
 	m.reload()
 	if norm == "off" {
-		m.toast = "✓ Auto-compact 已关闭（跟随 agy 服务端默认）"
+		m.toast = i18n.T("ui.toast.compact_off")
 	} else {
-		m.toast = fmt.Sprintf("✓ 默认 Auto-compact: %s", norm)
+		m.toast = i18n.T("ui.toast.compact_set", norm)
 	}
 	m.toastStyle = ui.SGood
 }
@@ -740,20 +750,20 @@ func (m model) View() string {
 
 	// ---- Header with 3 Tabs: Pool / Open Sessions / Token Usage ----
 	runCnt := m.runningSessionCount()
-	sessLabel := "当前打开"
+	sessLabel := i18n.T("ui.tab.open")
 	if m.openCount > 0 {
-		sessLabel = fmt.Sprintf("当前打开 %d", m.openCount)
+		sessLabel = i18n.T("ui.tab.open_n", m.openCount)
 	}
-	pillPool := ui.SDim.Render("号池")
+	pillPool := ui.SDim.Render(i18n.T("ui.tab.pool"))
 	pillSess := ui.SDim.Render(sessLabel)
-	pillUsage := ui.SDim.Render("用量统计")
+	pillUsage := ui.SDim.Render(i18n.T("ui.tab.usage"))
 	switch m.tab {
 	case tabPool:
-		pillPool = ui.BadgeActive.Render("号池")
+		pillPool = ui.BadgeActive.Render(i18n.T("ui.tab.pool"))
 	case tabSessions:
 		pillSess = ui.BadgeActive.Render(sessLabel)
 	case tabUsage:
-		pillUsage = ui.BadgeActive.Render("用量统计")
+		pillUsage = ui.BadgeActive.Render(i18n.T("ui.tab.usage"))
 	}
 
 	leftHead := ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version) + "  " + pillPool + " " + pillSess + " " + pillUsage
@@ -775,11 +785,11 @@ func (m model) View() string {
 			headerLine += "  " + rightHead
 		}
 	case tabSessions:
-		scopeTag := "仅打开"
+		scopeTag := i18n.T("ui.scope.open_only")
 		if m.showAllSess {
-			scopeTag = "含历史"
+			scopeTag = i18n.T("ui.scope.with_history")
 		}
-		rightHead := ui.SDim.Render(fmt.Sprintf("%s · %d 运行 / %d 打开", scopeTag, runCnt, m.openCount))
+		rightHead := ui.SDim.Render(i18n.T("ui.open_summary", scopeTag, runCnt, m.openCount))
 		headerLine = leftHead
 		if gap := innerW - lipgloss.Width(leftHead) - lipgloss.Width(rightHead); gap > 1 {
 			headerLine += strings.Repeat(" ", gap) + rightHead
@@ -814,7 +824,7 @@ func (m model) View() string {
 	} else if m.tab == tabSessions {
 		body.WriteString(m.renderSessionsBody(innerW))
 	} else if len(m.order) == 0 {
-		body.WriteString("\n" + ui.SAmber.Render("  号池为空 — 按 l 调用官方 agy acp --login 添加首个账号") + "\n\n")
+		body.WriteString("\n" + ui.SAmber.Render(i18n.T("ui.pool_empty_hint")) + "\n\n")
 	} else {
 		compact := innerW < 84
 		barW := 8
@@ -827,7 +837,8 @@ func (m model) View() string {
 			isSel := i == m.cursor
 			isActive := e == m.state.Active
 			q := m.quotas[e]
-			ok, why := router.AccountAvailability(e, m.state, m.quotas, now)
+			ok, _ := router.AccountAvailability(e, m.state, m.quotas, now)
+			kind := router.StatusKind(e, m.state, m.quotas, now)
 
 			// Selection + priority + active dot
 			ptr := " "
@@ -864,7 +875,7 @@ func (m model) View() string {
 				claudeCell = ui.SDim.Render("-/-")
 			}
 
-			badge := renderStatusBadge(isActive, ok, why, q, m.state.ReservePct, m.refreshing[e])
+			badge := renderStatusBadge(isActive, ok, kind, q, m.state.ReservePct, m.refreshing[e])
 			if compact {
 				rows = append(rows, []string{idxCell, emailCell, g5Cell, g7Cell, badge})
 			} else {
@@ -893,7 +904,7 @@ func (m model) View() string {
 	if m.toast != "" {
 		body.WriteString("\n" + m.toastStyle.Render(m.toast))
 	} else if m.tab == tabPool && len(m.refreshing) > 0 {
-		body.WriteString("\n" + m.spinner.View() + " " + ui.SHeadDim.Render(fmt.Sprintf("正在查询 %d 个账号...", len(m.refreshing))))
+		body.WriteString("\n" + m.spinner.View() + " " + ui.SHeadDim.Render(i18n.T("ui.probing_n", len(m.refreshing))))
 	}
 
 	card := ui.RenderCard(body.String(), cardW, ui.ColorRule)
@@ -903,37 +914,40 @@ func (m model) View() string {
 	switch m.tab {
 	case tabUsage:
 		keys = []string{
-			ui.KeyHint("tab/1-3", "切视图"),
-			ui.KeyHint("←/→/t", "今日/7天/全部"),
-			ui.KeyHint("↑↓", "选会话"),
-			ui.KeyHint("enter", "当前号恢复"),
-			ui.KeyHint("ctrl+n", "下个号恢复"),
-			ui.KeyHint("r", "重扫"),
-			ui.KeyHint("q", "退出"),
+			ui.KeyHint("tab/1-3", i18n.T("ui.key.tabs")),
+			ui.KeyHint("←/→/t", i18n.T("ui.key.range")),
+			ui.KeyHint("↑↓", i18n.T("ui.key.pick_sess")),
+			ui.KeyHint("enter", i18n.T("ui.key.resume_cur")),
+			ui.KeyHint("ctrl+n", i18n.T("ui.key.resume_next")),
+			ui.KeyHint("r", i18n.T("ui.key.rescan")),
+			ui.KeyHint("g", i18n.T("ui.key.lang")),
+			ui.KeyHint("q", i18n.T("ui.key.quit")),
 		}
 	case tabSessions:
 		keys = []string{
-			ui.KeyHint("tab/1-3", "切视图"),
-			ui.KeyHint("↑↓", "选择"),
-			ui.KeyHint("a", "仅打开/含历史"),
-			ui.KeyHint("enter", "当前号恢复"),
-			ui.KeyHint("ctrl+n", "下个号恢复"),
-			ui.KeyHint("r", "刷新"),
-			ui.KeyHint("q", "退出"),
+			ui.KeyHint("tab/1-3", i18n.T("ui.key.tabs")),
+			ui.KeyHint("↑↓", i18n.T("ui.key.select")),
+			ui.KeyHint("a", i18n.T("ui.key.scope_open_hist")),
+			ui.KeyHint("enter", i18n.T("ui.key.resume_cur")),
+			ui.KeyHint("ctrl+n", i18n.T("ui.key.resume_next")),
+			ui.KeyHint("r", i18n.T("ui.key.refresh")),
+			ui.KeyHint("g", i18n.T("ui.key.lang")),
+			ui.KeyHint("q", i18n.T("ui.key.quit")),
 		}
 	default:
 		keys = []string{
-			ui.KeyHint("tab/1-3", "切视图"),
-			ui.KeyHint("↑↓", "选择"),
-			ui.KeyHint("enter", "启动 agy"),
-			ui.KeyHint("s", "设为主号"),
-			ui.KeyHint("r/R", "刷新全部/单个"),
-			ui.KeyHint("J/K", "调序"),
-			ui.KeyHint("+/-", "水位线"),
-			ui.KeyHint("[/]/a", "压缩阈值"),
-			ui.KeyHint("c", "清冷却"),
-			ui.KeyHint("l/d", "登录/移除"),
-			ui.KeyHint("q", "退出"),
+			ui.KeyHint("tab/1-3", i18n.T("ui.key.tabs")),
+			ui.KeyHint("↑↓", i18n.T("ui.key.select")),
+			ui.KeyHint("enter", i18n.T("ui.key.launch")),
+			ui.KeyHint("s", i18n.T("ui.key.set_active")),
+			ui.KeyHint("r/R", i18n.T("ui.key.refresh_all_one")),
+			ui.KeyHint("J/K", i18n.T("ui.key.reorder")),
+			ui.KeyHint("+/-", i18n.T("ui.key.reserve")),
+			ui.KeyHint("[/]/a", i18n.T("ui.key.compact")),
+			ui.KeyHint("c", i18n.T("ui.key.clear_cd")),
+			ui.KeyHint("l/d", i18n.T("ui.key.login_rm")),
+			ui.KeyHint("g", i18n.T("ui.key.lang")),
+			ui.KeyHint("q", i18n.T("ui.key.quit")),
 		}
 	}
 	footer := "  " + strings.Join(keys, ui.SDim.Render("  ·  "))
@@ -960,9 +974,9 @@ func shortAccountLabel(email string) string {
 func (m model) renderSessionsBody(innerW int) string {
 	if len(m.sessionsList) == 0 {
 		if !m.showAllSess {
-			return "\n" + ui.SAmber.Render("  当前本机没有正在打开的 agy 会话（按 a 可查看全部历史，或按 Tab 切回号池启动）") + "\n"
+			return "\n" + ui.SAmber.Render(i18n.T("ui.sessions.empty_open")) + "\n"
 		}
-		return "\n" + ui.SAmber.Render("  暂无会话记录（启动一次 agy 后自动同步）") + "\n"
+		return "\n" + ui.SAmber.Render(i18n.T("ui.sessions.empty_all")) + "\n"
 	}
 	var b strings.Builder
 	now := time.Now()
@@ -999,11 +1013,11 @@ func (m model) renderSessionsBody(innerW int) string {
 		var stCell string
 		switch {
 		case s.Open && s.Running:
-			stCell = ui.SGoodB.Render(m.spinner.View() + " 运行")
+			stCell = ui.SGoodB.Render(m.spinner.View() + " " + i18n.T("ui.sessions.state_running"))
 		case s.Open:
-			stCell = ui.SHeadDim.Render("● 打开")
+			stCell = ui.SHeadDim.Render(i18n.T("ui.sessions.state_open"))
 		default:
-			stCell = ui.SDim.Render("✦ 历史")
+			stCell = ui.SDim.Render(i18n.T("ui.sessions.state_history"))
 		}
 
 		title := ui.Truncate(s.Title, titleMaxW)
@@ -1025,7 +1039,7 @@ func (m model) renderSessionsBody(innerW int) string {
 			}
 		}
 
-		stepsCell := ui.SDim.Render(fmt.Sprintf("%d步", s.Steps))
+		stepsCell := ui.SDim.Render(i18n.T("ui.sessions.steps", s.Steps))
 		ageCell := ui.SDim.Render(sessions.FmtRelativeTime(s.ModifiedAt, now))
 		row := []string{ptr, stCell, title}
 		if showAcct {
@@ -1062,26 +1076,27 @@ func (m model) renderSessionsBody(innerW int) string {
 	var metaParts []string
 	if live, ok := m.liveMeta[sel.ID]; ok {
 		if live.TTY != "" {
-			metaParts = append(metaParts, "终端 "+live.TTY)
+			metaParts = append(metaParts, i18n.T("ui.sessions.detail_tty", live.TTY))
 		}
 		if live.Email != "" {
-			metaParts = append(metaParts, "账号 "+live.Email)
+			metaParts = append(metaParts, i18n.T("ui.sessions.detail_acct", live.Email))
 		}
 	} else if sel.Open {
-		metaParts = append(metaParts, "本机进程已持有 presence 锁")
+		metaParts = append(metaParts, i18n.T("ui.sessions.detail_presence"))
 	}
 	metaParts = append(metaParts, "ID "+idShort)
+	dirLabel := i18n.T("ui.sessions.detail_dir")
 	rightMeta := ui.SDim.Render("  ·  " + strings.Join(metaParts, "  ·  "))
-	wsMax := innerW - lipgloss.Width("目录  ") - lipgloss.Width(rightMeta)
+	wsMax := innerW - lipgloss.Width(dirLabel) - lipgloss.Width(rightMeta)
 	if wsMax < 12 {
 		wsMax = 12
 	}
-	line1 := ui.SHeadDim.Render("目录  ") + ui.SDim.Render(ui.Truncate(sel.PrimaryWorkspace(m.homeDir), wsMax)) + rightMeta
+	line1 := ui.SHeadDim.Render(dirLabel) + ui.SDim.Render(ui.Truncate(sel.PrimaryWorkspace(m.homeDir), wsMax)) + rightMeta
 	prev := sel.Preview
 	if prev == "" {
 		prev = sel.Title
 	}
-	line2 := ui.SHeadDim.Render("预览  ") + ui.SDim.Render(ui.Truncate(prev, innerW-8))
+	line2 := ui.SHeadDim.Render(i18n.T("ui.sessions.detail_preview")) + ui.SDim.Render(ui.Truncate(prev, innerW-8))
 	b.WriteString(line1 + "\n" + line2)
 	return b.String()
 }
@@ -1102,44 +1117,44 @@ func (m model) renderDetailStrip(email string, now float64, width int) string {
 			resetParts = append(resetParts, "C7d ↻ "+vault.FmtLocalTime(q.C7Reset))
 		}
 	}
-	line1 := ui.SHeadDim.Render("重置时间  ") + ui.SDim.Render("暂无缓存（按 R 查询）")
+	line1 := ui.SHeadDim.Render(i18n.T("ui.detail.reset_label")) + ui.SDim.Render(i18n.T("ui.detail.reset_empty"))
 	if len(resetParts) > 0 {
-		line1 = ui.SHeadDim.Render("重置时间  ") + ui.SDim.Render(strings.Join(resetParts, "  ·  "))
+		line1 = ui.SHeadDim.Render(i18n.T("ui.detail.reset_label")) + ui.SDim.Render(strings.Join(resetParts, "  ·  "))
 	}
 
-	tokInfo := ui.SDim.Render("token 未知")
+	tokInfo := ui.SDim.Render(i18n.T("ui.detail.tok_unknown"))
 	if acct != nil {
 		if meta, err := vault.ReadTokenMeta(acct.TokenFile); err == nil {
 			if meta.HasRefresh {
 				if meta.Expiry > now {
-					tokInfo = ui.SGood.Render("✓ refresh_token 正常") + ui.SDim.Render(fmt.Sprintf(" · access 剩 %s", vault.FmtDuration(meta.Expiry-now)))
+					tokInfo = ui.SGood.Render(i18n.T("ui.detail.tok_ok")) + ui.SDim.Render(i18n.T("ui.detail.tok_access_rem", vault.FmtDuration(meta.Expiry-now)))
 				} else {
-					tokInfo = ui.SGood.Render("✓ refresh_token 正常") + ui.SDim.Render(" · access 启动时静默续签")
+					tokInfo = ui.SGood.Render(i18n.T("ui.detail.tok_ok")) + ui.SDim.Render(i18n.T("ui.detail.tok_silent_renew"))
 				}
 			} else {
-				tokInfo = ui.SRed.Render("✗ 缺少 refresh_token")
+				tokInfo = ui.SRed.Render(i18n.T("ui.detail.tok_missing_refresh"))
 			}
 		}
 	}
 	if cd := m.state.Cooldowns[email]; cd != nil && cd.Until > now {
-		tokInfo += "  " + ui.SAmber.Render(fmt.Sprintf("! 冷却剩 %s (%s)", vault.FmtDuration(cd.Until-now), cd.Reason))
+		tokInfo += "  " + ui.SAmber.Render(i18n.T("ui.detail.cooling_rem", vault.FmtDuration(cd.Until-now), cd.Reason))
 	} else if q != nil && q.Error != "" {
 		tokInfo += "  " + ui.SAmber.Render("! "+q.Error)
 	}
-	line2 := ui.SHeadDim.Render("凭据状态  ") + tokInfo
+	line2 := ui.SHeadDim.Render(i18n.T("ui.detail.cred_label")) + tokInfo
 	_ = width
 	return line1 + "\n" + line2
 }
 
-func renderStatusBadge(isActive, ok bool, why string, q *vault.Quota, reservePct float64, refreshing bool) string {
+func renderStatusBadge(isActive, ok bool, kind string, q *vault.Quota, reservePct float64, refreshing bool) string {
 	if refreshing {
 		return ui.SHeadDim.Render("SYNC")
 	}
 	if !ok {
-		switch {
-		case strings.HasPrefix(why, "7d"):
+		switch kind {
+		case "7d":
 			return ui.BadgeFull.Render("7D FULL")
-		case strings.HasPrefix(why, "5h"):
+		case "5h":
 			return ui.BadgeFull.Render("5H FULL")
 		default:
 			return ui.BadgeCooling.Render("COOLING")

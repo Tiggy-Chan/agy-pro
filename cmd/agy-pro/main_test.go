@@ -226,8 +226,8 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	if got := v.LoadState().ReservePct; got != 10 {
 		t.Fatalf("expected saved ReservePct=10, got %v", got)
 	}
-	if got := vault.EffectiveAutoCompact(v.LoadState()); got != "80%" {
-		t.Fatalf("expected default AutoCompact=80%%, got %q", got)
+	if got := vault.EffectiveAutoCompact(v.LoadState()); got != "90%" {
+		t.Fatalf("expected default AutoCompact=90%%, got %q", got)
 	}
 	if rc := runCLI([]string{"config", "auto-compact", "bad!"}, dir); rc != 2 {
 		t.Fatalf("expected exit 2 on invalid auto-compact, got %d", rc)
@@ -243,6 +243,25 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	}
 	if got := vault.EffectiveAutoCompact(v.LoadState()); got != "" {
 		t.Fatalf("expected disabled EffectiveAutoCompact=\"\", got %q", got)
+	}
+	// `config lang` switches and persists preference (including `cn` -> `zh`)
+	if rc := runCLI([]string{"config", "lang", "cn"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config lang cn, got %d", rc)
+	}
+	if got := v.LoadState().Language; got != "zh" {
+		t.Fatalf("expected normalized Language=zh, got %q", got)
+	}
+	if rc := runCLI([]string{"config", "lang", "en"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config lang en, got %d", rc)
+	}
+	if got := v.LoadState().Language; got != "en" {
+		t.Fatalf("expected Language=en, got %q", got)
+	}
+	if rc := runCLI([]string{"config", "lang", "auto"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config lang auto, got %d", rc)
+	}
+	if rc := runCLI([]string{"config", "lang", "xx-invalid"}, dir); rc != 2 {
+		t.Fatalf("expected exit 2 on invalid config lang, got %d", rc)
 	}
 	// `config notify off` / `on` and invalid value rejection
 	if rc := runCLI([]string{"config", "notify", "off"}, dir); rc != 0 {
@@ -414,7 +433,7 @@ func TestFirstRunAutoConfigAndShellSync(t *testing.T) {
 		t.Fatalf("expected first run to configure, configured=%v err=%v", configured, err)
 	}
 	st := v.LoadState()
-	if !st.FirstRunConfigured || st.AutoCompact != "80%" {
+	if !st.FirstRunConfigured || st.AutoCompact != "90%" {
 		t.Fatalf("unexpected first-run state: %+v", st)
 	}
 	// Must NOT create unsolicited .zshenv or .profile when .zshrc/.bashrc already exist
@@ -426,7 +445,7 @@ func TestFirstRunAutoConfigAndShellSync(t *testing.T) {
 	}
 
 	zshData, _ := os.ReadFile(zshrc)
-	if !strings.Contains(string(zshData), `export AGY_CLI_AUTO_COMPACT_OVERRIDE="80%"`) {
+	if !strings.Contains(string(zshData), `export AGY_CLI_AUTO_COMPACT_OVERRIDE="90%"`) {
 		t.Fatalf("expected .zshrc to receive default export, got:\n%s", string(zshData))
 	}
 	bashData, _ := os.ReadFile(bashrc)
@@ -460,8 +479,8 @@ func TestFirstRunAutoConfigAndShellSync(t *testing.T) {
 }
 
 func TestAutoCompactEnvResolutionAndStepping(t *testing.T) {
-	if got := vault.StepAutoCompact("80%", +5); got != "85%" {
-		t.Fatalf("expected 85%%, got %s", got)
+	if got := vault.StepAutoCompact("90%", +5); got != "95%" {
+		t.Fatalf("expected 95%%, got %s", got)
 	}
 	if got := vault.StepAutoCompact("95%", +5); got != "off" {
 		t.Fatalf("expected off after 95%%+5, got %s", got)
@@ -500,8 +519,8 @@ func TestAutoCompactEnvResolutionAndStepping(t *testing.T) {
 			t.Fatalf("CleanNativeEnv must NOT spoof SSH_CONNECTION when unset, found %q", kv)
 		}
 	}
-	if found != "80%" {
-		t.Fatalf("expected CleanNativeEnv default 80%%, got %q", found)
+	if found != "90%" {
+		t.Fatalf("expected CleanNativeEnv default 90%%, got %q", found)
 	}
 	if foundForceFile != "1" {
 		t.Fatalf("expected CleanNativeEnv to set %s=1, got %q", vault.ForceFileTokenEnvKey, foundForceFile)

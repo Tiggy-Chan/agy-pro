@@ -7,6 +7,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 )
 
 func TestParseWorkspaceURIs(t *testing.T) {
@@ -121,8 +123,14 @@ func TestListReadsTopLevelSessionsReadOnly(t *testing.T) {
 	}
 
 	now := time.Date(2026, 11, 26, 10, 35, 0, 0, time.UTC)
+	i18n.SetPref("zh")
+	t.Cleanup(func() { i18n.SetPref("auto") })
 	if rel := FmtRelativeTime(list[0].ModifiedAt, now); rel != "6m前" {
-		t.Fatalf("expected 6m前, got %q", rel)
+		t.Fatalf("expected 6m前 in zh, got %q", rel)
+	}
+	i18n.SetPref("en")
+	if rel := FmtRelativeTime(list[0].ModifiedAt, now); rel != "6m ago" {
+		t.Fatalf("expected 6m ago in en, got %q", rel)
 	}
 
 	// Subagent ID must resolve back to its top-level parent conversation ID

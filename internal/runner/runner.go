@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
@@ -38,7 +39,9 @@ var TerminalResetSeq = []byte(
 		"\x1b[0m",
 )
 
-const ResumeContinuePrompt = "刚刚因上一个账号额度耗尽（5小时或7天池触顶），agy-pro 已自动切换到新账号并恢复当前会话。请先核对刚才中断前的进展与本地文件状态，然后直接继续完成未完成的任务。"
+func ResumeContinuePrompt() string {
+	return i18n.T("runner.resume_prompt")
+}
 
 const uuidPat = `([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`
 

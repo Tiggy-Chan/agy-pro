@@ -12,6 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
@@ -140,7 +141,7 @@ func List(dbPath string, limit int) ([]Session, error) {
 			if pClean != "" {
 				tClean = pClean
 			} else {
-				tClean = "(无标题会话)"
+				tClean = i18n.T("sessions.untitled")
 			}
 		}
 		out = append(out, Session{
@@ -220,13 +221,13 @@ func FmtRelativeTime(t time.Time, now time.Time) string {
 	}
 	switch {
 	case d < time.Minute:
-		return "刚刚"
+		return i18n.T("sessions.just_now")
 	case d < time.Hour:
-		return fmt.Sprintf("%dm前", int(d.Minutes()))
+		return i18n.T("sessions.min_ago", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh前", int(d.Hours()))
+		return i18n.T("sessions.hour_ago", int(d.Hours()))
 	case d < 30*24*time.Hour:
-		return fmt.Sprintf("%dd前", int(d.Hours()/24))
+		return i18n.T("sessions.day_ago", int(d.Hours()/24))
 	default:
 		return t.Local().Format("01-02")
 	}
@@ -382,7 +383,7 @@ func CheckSchema(dbPath string) SchemaStatus {
 		dbPath = DefaultDBPath()
 	}
 	if _, err := os.Stat(dbPath); err != nil {
-		return SchemaStatus{Exists: false, Err: "未找到会话库（首次启动 agy 后自动生成）"}
+		return SchemaStatus{Exists: false, Err: i18n.T("sessions.db_missing")}
 	}
 	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)", dbPath)
 	db, err := sql.Open("sqlite", dsn)
@@ -408,7 +409,7 @@ func CheckSchema(dbPath string) SchemaStatus {
 		}
 	}
 	if len(have) == 0 {
-		return SchemaStatus{Exists: true, Err: "缺少 conversation_summaries 表"}
+		return SchemaStatus{Exists: true, Err: i18n.T("sessions.table_missing")}
 	}
 	var missing []string
 	for _, col := range requiredSummaryColumns {

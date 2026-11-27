@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
@@ -232,12 +233,12 @@ func (m sessionModel) View() string {
 	}
 	innerW := cardW - 6
 
-	scopeCur := ui.SDim.Render("当前目录")
-	scopeAll := ui.SDim.Render("全部目录")
+	scopeCur := ui.SDim.Render(i18n.T("picker.scope_cwd"))
+	scopeAll := ui.SDim.Render(i18n.T("picker.scope_all"))
 	if !m.showAll {
-		scopeCur = ui.BadgeActive.Render("当前目录")
+		scopeCur = ui.BadgeActive.Render(i18n.T("picker.scope_cwd"))
 	} else {
-		scopeAll = ui.BadgeActive.Render("全部目录")
+		scopeAll = ui.BadgeActive.Render(i18n.T("picker.scope_all"))
 	}
 
 	leftHead := ui.Brand("agy-pro") + " " + ui.SDim.Render("resume") + "  " + scopeCur + " " + scopeAll
@@ -249,7 +250,7 @@ func (m sessionModel) View() string {
 		headLine += "  " + rightHead
 	}
 
-	searchHint := ui.SDim.Render("直接输入关键词实时搜索（标题 / 预览 / 目录 / ID）...")
+	searchHint := ui.SDim.Render(i18n.T("picker.search_hint"))
 	searchLine := ui.SAccentB.Render("❯ ") + searchHint
 	if m.query != "" {
 		searchLine = ui.SAccentB.Render("❯ ") + ui.SBold.Render(m.query) + ui.SAccent.Render("▏")
@@ -262,7 +263,7 @@ func (m sessionModel) View() string {
 
 	now := time.Now()
 	if len(m.filtered) == 0 {
-		body.WriteString("\n" + ui.SAmber.Render("  没有匹配的会话（按 Tab 切换全部目录，或按 Esc 清空搜索）") + "\n\n")
+		body.WriteString("\n" + ui.SAmber.Render(i18n.T("picker.empty")) + "\n\n")
 	} else {
 		page := m.pageRows()
 		end := m.offset + page
@@ -303,7 +304,7 @@ func (m sessionModel) View() string {
 				title = ui.SBold.Render(title)
 			}
 
-			stepsCell := ui.SDim.Render(fmt.Sprintf("%d步", s.Steps))
+			stepsCell := ui.SDim.Render(i18n.T("ui.sessions.steps", s.Steps))
 			ageCell := ui.SDim.Render(sessions.FmtRelativeTime(s.ModifiedAt, now))
 
 			if showWS {
@@ -335,30 +336,31 @@ func (m sessionModel) View() string {
 		}
 		acctInfo := m.activeAccount
 		if acctInfo == "" {
-			acctInfo = "(自动选号)"
+			acctInfo = i18n.T("common.auto_pick")
 		}
+		dirLabel := i18n.T("picker.detail_dir")
 		rightMeta := ui.SDim.Render("  ·  ID ") + ui.SHeadDim.Render(idShort) +
-			ui.SDim.Render("  ·  账号 ") + ui.SGood.Render(acctInfo)
-		wsMax := innerW - lipgloss.Width("目录  ") - lipgloss.Width(rightMeta)
+			ui.SDim.Render(i18n.T("picker.detail_acct")) + ui.SGood.Render(acctInfo)
+		wsMax := innerW - lipgloss.Width(dirLabel) - lipgloss.Width(rightMeta)
 		if wsMax < 12 {
 			wsMax = 12
 		}
-		line1 := ui.SHeadDim.Render("目录  ") + ui.SDim.Render(ui.Truncate(wsDisp, wsMax)) + rightMeta
+		line1 := ui.SHeadDim.Render(dirLabel) + ui.SDim.Render(ui.Truncate(wsDisp, wsMax)) + rightMeta
 		prevText := sel.Preview
 		if prevText == "" {
 			prevText = sel.Title
 		}
-		line2 := ui.SHeadDim.Render("预览  ") + ui.SDim.Render(ui.Truncate(prevText, innerW-8))
+		line2 := ui.SHeadDim.Render(i18n.T("picker.detail_preview")) + ui.SDim.Render(ui.Truncate(prevText, innerW-8))
 		body.WriteString(line1 + "\n" + line2)
 	}
 
 	card := ui.RenderCard(body.String(), cardW, ui.ColorRule)
 	keys := []string{
-		ui.KeyHint("↑↓", "选择"),
-		ui.KeyHint("tab", "当前/全部目录"),
-		ui.KeyHint("enter", "当前号恢复"),
-		ui.KeyHint("ctrl+n", "下个号恢复"),
-		ui.KeyHint("esc", "清空/退出"),
+		ui.KeyHint("↑↓", i18n.T("ui.key.select")),
+		ui.KeyHint("tab", i18n.T("picker.key.scope")),
+		ui.KeyHint("enter", i18n.T("ui.key.resume_cur")),
+		ui.KeyHint("ctrl+n", i18n.T("ui.key.resume_next")),
+		ui.KeyHint("esc", i18n.T("picker.key.esc")),
 	}
 	footer := "  " + strings.Join(keys, ui.SDim.Render("  ·  "))
 	return "\n" + card + "\n" + footer + "\n"

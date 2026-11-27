@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
@@ -71,7 +72,7 @@ func ParseUsageOutput(out string, now float64) *vault.Quota {
 		assignBucketQuota(q, pool, "", kind, "", rem, resetTS)
 	}
 	if q.H5Rem == nil && q.D7Rem == nil && q.C5Rem == nil && q.C7Rem == nil {
-		q.Error = "未返回额度行"
+		q.Error = i18n.T("quota.err.no_lines")
 	}
 	return q
 }
@@ -238,7 +239,7 @@ func ParseFetchQuotaStatusProto(msg []byte, now float64) *vault.Quota {
 	q := &vault.Quota{At: now}
 	top, ok := parseProtoFields(msg)
 	if !ok {
-		q.Error = "额度响应解析失败"
+		q.Error = i18n.T("quota.err.parse_failed")
 		return q
 	}
 	for _, f := range top {
@@ -272,7 +273,7 @@ func ParseFetchQuotaStatusProto(msg []byte, now float64) *vault.Quota {
 		}
 	}
 	if q.H5Rem == nil && q.D7Rem == nil && q.C5Rem == nil && q.C7Rem == nil {
-		q.Error = "未返回额度行"
+		q.Error = i18n.T("quota.err.no_lines")
 	}
 	return q
 }
@@ -424,7 +425,7 @@ func probeViaAgyCLI(acct *vault.Account, agyBin string, timeout time.Duration, n
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
 		<-done
-		q.Error = fmt.Sprintf("超时 (%ds)", int(timeout.Seconds()))
+		q.Error = i18n.T("quota.err.timeout", int(timeout.Seconds()))
 		return q
 	}
 
