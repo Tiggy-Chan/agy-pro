@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square" alt="Go 1.26+" />
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-1F2328?style=flat-square" alt="Linux and macOS" />
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-1F2328?style=flat-square" alt="Linux, macOS and Windows" />
   <img src="https://img.shields.io/badge/Architecture-Zero%20Proxy%20%7C%20Zero%20PTY-2E7D32?style=flat-square" alt="Zero Proxy Zero PTY" />
   <img src="https://img.shields.io/badge/i18n-EN%20%7C%20%E4%B8%AD%E6%96%87-5B6678?style=flat-square" alt="English and Chinese" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Non--Commercial-3A6FE0?style=flat-square" alt="License Non-Commercial" /></a>
@@ -26,8 +26,8 @@
 
 ## Key Features
 
-- **Single Static Binary (Zero CGO)**: Compiles cleanly to `~/.local/bin/agy-pro` on Linux and macOS (`amd64` / `arm64`). Local commands (`status`, `use`, `next`) finish in `< 5ms` with ~4 MB RSS.
-- **Zero-Proxy Native Execution**: Isolated account vault under `~/.local/state/agy-pro/` (`0700`/`0600`) using official `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` (no system Keychain writes, no `SSH_CONNECTION` spoofing). Preserves your real `$HOME`, native model settings, and `/model` switching.
+- **Single Static Binary (Zero CGO)**: Compiles cleanly for Linux, macOS, and Windows (`amd64` / `arm64`, PowerShell, CMD, and Windows Terminal). Local commands (`status`, `use`, `next`) finish in `< 5ms` with ~4 MB RSS.
+- **Zero-Proxy Native Execution**: Isolated account vault under `~/.local/state/agy-pro/` (`%LOCALAPPDATA%\agy-pro\` on Windows) using official `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` (no system Keychain writes, no `SSH_CONNECTION` spoofing). Auto-detects official `agy` (including `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows) while preserving your real `$HOME`/`%USERPROFILE%`, native model settings, and `/model` switching.
 - **Sub-Second Direct Quota Probing + ~1.5s Auto-Failover**:
   - Strict **drain** rotation (exhausts one account's 5h/7d pool before advancing; never bounces back).
   - Queries Gemini + Claude/GPT 5h/7d pools concurrently over Go stdlib HTTP/2 gRPC (`FetchQuotaStatus`, ~0.8s for 4 accounts) with automatic fallback to official `agy --print /usage` on token refresh or schema changes.
@@ -35,29 +35,49 @@
   - Configurable low-quota proactive switching (`agy-pro config reserve 10` or `--reserve 10`).
 - **3-in-1 Interactive Dashboard (`agy-pro ui`)**:
   - **Pool (`1`)**: Live dual-pool quota bars, drain priority reordering (`J`/`K`), reserve & Auto-compact tuning (`+/-`, `[/]/a`), login/remove (`l`/`d`), and instant language toggle (`g`).
-  - **Open Sessions (`2`)**: Detects truly open `agy` terminals on this machine in `< 0.5ms` via non-blocking kernel `flock` on `~/.gemini/antigravity-cli/presence/*.lock` (covers both `agy-pro` and bare `agy`, plus live account & TTY display). Press `a` to toggle open-only vs. full history (hiding empty 0-step shells while keeping open windows pinned on top).
+  - **Open Sessions (`2`)**: Detects truly open `agy` terminals on this machine in `< 0.5ms` via non-blocking kernel locks (`flock` on Unix / `LockFileEx` on Windows) over `~/.gemini/antigravity-cli/presence/*.lock` (covers both `agy-pro` and bare `agy`, plus live account & TTY display). Press `a` to toggle open-only vs. full history (hiding empty 0-step shells while keeping open windows pinned on top).
   - **Token Usage (`3`)**: Read-only parallel scanner over local `conversations/*.db` (`gen_metadata` + call-level step timestamps, rolling subagents up to parent sessions) showing exact per-model (`TOTAL / Input / Cache Read / Hit% / Output`, with automatic tail rollup) and Top-session token breakdown across **Today / 7 Days / All**, with `Enter` / `Ctrl+N` to resume any session directly and `r` to force a fresh disk rescan.
 - **Interactive Session Picker (`agy-pro resume`)**: Pure-Go read-only SQLite picker (like `claude --resume`) that hides empty 0-step placeholders, defaults to the current directory, supports `Tab` CWD/All toggle, live multi-term search, `Enter` (current account) and `Ctrl+N` (next account) resume.
 - **Live Terminal Tab Title & Desktop Notifications**:
-  - Syncs live session title (including in-session `/rename`) and run state (`⠋` working / `✦` idle / `↻` switching) to the terminal tab via atomic OSC 0 without PTY interception, restoring your original tab title on exit (`AGY_PRO_NO_TITLE=1` to disable).
-  - Sends non-blocking desktop notifications (`notify-send` on Linux / `osascript` on macOS, silent on headless SSH) when a long turn (`>= 30s`) completes or on 429 failover (`agy-pro config notify on|off`).
+  - Syncs live session title (including in-session `/rename`) and run state (`⠋` working / `✦` idle / `↻` switching) to the terminal tab via atomic OSC 0 without PTY interception, clearing/restoring your original tab title on exit (`AGY_PRO_NO_TITLE=1` to disable).
+  - Sends non-blocking desktop notifications (`notify-send` on Linux / `osascript` on macOS / WinRT Toast on Windows, silent on headless SSH) when a long turn (`>= 30s`) completes or on 429 failover (`agy-pro config notify on|off`).
 - **Zero-Dotfile Default Auto-Compact (90%) & CJK OSC-8 Guard**:
-  - Defaults `AGY_CLI_AUTO_COMPACT_OVERRIDE=90%` strictly on child `agy` processes (zero `~/.bashrc`/`~/.zshrc` edits unless you explicitly pass `--sync-shell`).
+  - Defaults `AGY_CLI_AUTO_COMPACT_OVERRIDE=90%` strictly on child `agy` processes (zero `~/.bashrc`/`~/.zshrc` or Windows `HKCU\Environment` edits unless you explicitly pass `--sync-shell`).
   - Defaults `AGY_CLI_FORCE_OSC8=0` (overridable via `AGY_CLI_FORCE_OSC8=1`) to prevent native `agy`'s un-escaped UTF-8 OSC-8 `0x9C`/`0x8D` Reverse Index cursor-up ghosting on CJK file paths.
-  - Short cross-process `launch.lock` serializes concurrent multi-tab token handshakes (~45ms), and `TerminalGuard` unconditionally restores `termios` + Kitty Keyboard Protocol on failover.
-- **Externalized i18n Packs (`en` / `zh`)**: Automatically follows your system locale (`zh*` → Chinese, all others → English), configurable via `agy-pro config lang <auto|en|zh>`, `AGY_PRO_LANG`, or `g` inside `agy-pro ui`. All strings live in external JSON catalogs (`internal/i18n/locales/*.json`, with optional drop-in overrides in `~/.local/state/agy-pro/locales/`).
+  - Short cross-process `launch.lock` serializes concurrent multi-tab token handshakes (~45ms), and `TerminalGuard` unconditionally restores terminal state + Kitty Keyboard Protocol on failover.
+- **Externalized i18n Packs (`en` / `zh`)**: Automatically follows your system locale (POSIX `LANG`/`LC_*` plus Windows user locale; `zh*` → Chinese, all others → English), configurable via `agy-pro config lang <auto|en|zh>`, `AGY_PRO_LANG`, or `g` inside `agy-pro ui`. All strings live in external JSON catalogs (`internal/i18n/locales/*.json`, with optional drop-in overrides in `<stateDir>/locales/`).
 
 ---
 
 ## Install & Quick Start
 
-**Prerequisites**: Official `agy` CLI installed locally, `Go 1.26+`, and `~/.local/bin` in your `PATH`.
+**Prerequisites**: Official `agy` CLI installed locally and `Go 1.26+`.
+
+**Linux / macOS** (with `~/.local/bin` in `PATH`):
 
 ```bash
 git clone https://github.com/Tiggy-Chan/agy-pro.git
 cd agy-pro
 make test      # Run full unit test suite & real PTY terminal guard tests
 make install   # Build and install single binary to ~/.local/bin/agy-pro
+```
+
+**Windows (PowerShell)** (installs directly alongside official `agy.exe` in `%LOCALAPPDATA%\agy\bin`, ready immediately in both PowerShell and CMD):
+
+```powershell
+git clone https://github.com/Tiggy-Chan/agy-pro.git
+cd agy-pro
+go test ./...
+go build -ldflags="-s -w" -o "$env:LOCALAPPDATA\agy\bin\agy-pro.exe" .\cmd\agy-pro
+```
+
+**Windows (CMD)**:
+
+```cmd
+git clone https://github.com/Tiggy-Chan/agy-pro.git
+cd agy-pro
+go test ./...
+go build -ldflags="-s -w" -o "%LOCALAPPDATA%\agy\bin\agy-pro.exe" .\cmd\agy-pro
 ```
 
 Then sign in 2+ Google accounts into the isolated pool and launch:
@@ -113,6 +133,10 @@ agy-pro doctor                                 # Environment isolation, upstream
 > May `agy-pro` always keep the discipline of an invisible exoskeleton — resisting feature creep so native `agy` remains the protagonist — while staying vigilant with graceful fallbacks and contract tests at every seam where it touches upstream.
 
 ---
+
+## License
+
+This project is source-available under the [agy-pro Non-Commercial & Personal Use License](LICENSE): free for personal non-commercial use and individual internal development assistance on your own workstation. Any commercial use, resale, paid distribution, rebranding, bundling into commercial products, or paid hosted/SaaS/account-pool services without prior written authorization from the author is prohibited.
 
 ## Disclaimer
 

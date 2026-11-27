@@ -316,7 +316,7 @@ func ParseGenMetadataRecord(data []byte) (CallRecord, int, bool) {
 }
 
 func scanConversationDB(dbPath string, fallbackTS int64) []CallRecord {
-	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(500)&_pragma=query_only(1)", dbPath)
+	dsn := vault.SQLiteReadOnlyDSN(dbPath, 500)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil
@@ -377,7 +377,7 @@ func loadSummaryMap(dbPath string) map[string]summaryInfo {
 	if _, err := os.Stat(dbPath); err != nil {
 		return out
 	}
-	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)", dbPath)
+	dsn := vault.SQLiteReadOnlyDSN(dbPath, 1000)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return out

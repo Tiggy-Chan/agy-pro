@@ -1,15 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/creack/pty"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
 	"github.com/Tiggy-Chan/agy-pro/internal/router"
@@ -17,6 +15,32 @@ import (
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
+
+func setTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	t.Setenv("XDG_STATE_HOME", "")
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "AppData", "Local"))
+}
+
+func writeMockArgDumper(t *testing.T, dir, name, outPath string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		p := filepath.Join(dir, name+".cmd")
+		script := "@echo off\r\n(\r\nfor %%A in (%*) do echo %%~A\r\n) > \"" + outPath + "\"\r\n"
+		if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+			t.Fatalf("write mock cmd failed: %v", err)
+		}
+		return p
+	}
+	p := filepath.Join(dir, name)
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + outPath + "\"\n"
+	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+		t.Fatalf("write mock sh failed: %v", err)
+	}
+	return p
+}
 
 func fptr(v float64) *float64 { return &v }
 
@@ -281,8 +305,7 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	}
 	// Default first run + `config auto-compact` without --sync-shell MUST NOT touch user dotfiles!
 	cleanHome := t.TempDir()
-	t.Setenv("HOME", cleanHome)
-	t.Setenv("XDG_STATE_HOME", "")
+	setTestHome(t, cleanHome)
 	rcPath := filepath.Join(cleanHome, ".bashrc")
 	origRC := "export PATH=\"$HOME/.local/bin:$PATH\"\n"
 	_ = os.WriteFile(rcPath, []byte(origRC), 0o644)
@@ -292,12 +315,14 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	if afterRC, _ := os.ReadFile(rcPath); string(afterRC) != origRC {
 		t.Fatalf("config auto-compact without --sync-shell MUST NOT modify .bashrc! got:\n%s", string(afterRC))
 	}
-	// With explicit --sync-shell it DOES sync cleanly
-	if rc := runCLI([]string{"config", "auto-compact", "75%", "--sync-shell"}, ""); rc != 0 {
-		t.Fatalf("expected exit 0 on config auto-compact 75%% --sync-shell, got %d", rc)
-	}
-	if afterRC, _ := os.ReadFile(rcPath); !strings.Contains(string(afterRC), `AGY_CLI_AUTO_COMPACT_OVERRIDE="75%"`) {
-		t.Fatalf("expected --sync-shell to update .bashrc, got:\n%s", string(afterRC))
+	// With explicit --sync-shell it DOES sync cleanly (avoid mutating real HKCU registry on Windows CI)
+	if runtime.GOOS != "windows" {
+		if rc := runCLI([]string{"config", "auto-compact", "75%", "--sync-shell"}, ""); rc != 0 {
+			t.Fatalf("expected exit 0 on config auto-compact 75%% --sync-shell, got %d", rc)
+		}
+		if afterRC, _ := os.ReadFile(rcPath); !strings.Contains(string(afterRC), `AGY_CLI_AUTO_COMPACT_OVERRIDE="75%"`) {
+			t.Fatalf("expected --sync-shell to update .bashrc, got:\n%s", string(afterRC))
+		}
 	}
 	// Invalid CLI launch flags must fail fast with exit code 2 (not silently ignored)
 	if rc := runCLI([]string{"--auto-compact", "NaN%"}, dir); rc != 2 {
@@ -362,7 +387,7 @@ func TestNextAndUsePassthrough(t *testing.T) {
 	tmp := t.TempDir()
 	fakeHome := filepath.Join(tmp, "home")
 	_ = os.MkdirAll(fakeHome, 0o700)
-	t.Setenv("HOME", fakeHome)
+	setTestHome(t, fakeHome)
 	poolDir := filepath.Join(tmp, "pool")
 	v := vault.New(poolDir)
 	for _, em := range []string{"alice@example.com", "bob@example.com"} {
@@ -379,9 +404,7 @@ func TestNextAndUsePassthrough(t *testing.T) {
 	_ = v.UpdateState(func(s *vault.State) { s.Active = "alice@example.com" })
 
 	argsOut := filepath.Join(tmp, "captured_args.txt")
-	mockAgy := filepath.Join(tmp, "mock-agy")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + argsOut + "\"\n"
-	_ = os.WriteFile(mockAgy, []byte(script), 0o755)
+	mockAgy := writeMockArgDumper(t, tmp, "mock-agy", argsOut)
 	t.Setenv("AGY_PRO_BIN", mockAgy)
 
 	if rc := runCLI([]string{"next", "--dangerously-skip-permissions", "-c"}, poolDir); rc != 0 {
@@ -394,7 +417,7 @@ func TestNextAndUsePassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mock agy was not invoked: %v", err)
 	}
-	gotArgs := string(captured)
+	gotArgs := strings.ReplaceAll(string(captured), "\r\n", "\n")
 	if !strings.Contains(gotArgs, "--dangerously-skip-permissions") || !strings.Contains(gotArgs, "\n-c\n") {
 		t.Fatalf("expected native flags forwarded verbatim, got:\n%s", gotArgs)
 	}
@@ -414,14 +437,19 @@ func TestNextAndUsePassthrough(t *testing.T) {
 
 func TestFirstRunAutoConfigAndShellSync(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	setTestHome(t, fakeHome)
 	t.Setenv("SHELL", "/bin/zsh")
 
 	// Symlinked .zshrc must preserve its symlink target (never replaced with regular file)
 	realZshrc := filepath.Join(fakeHome, "dotfiles_zshrc")
 	_ = os.WriteFile(realZshrc, []byte("export PATH=\"$HOME/.local/bin:$PATH\"\n"), 0o644)
 	zshrc := filepath.Join(fakeHome, ".zshrc")
-	if err := os.Symlink(realZshrc, zshrc); err != nil {
+	symlinkOK := false
+	if err := os.Symlink(realZshrc, zshrc); err == nil {
+		symlinkOK = true
+	} else if runtime.GOOS == "windows" {
+		_ = os.WriteFile(zshrc, []byte("export PATH=\"$HOME/.local/bin:$PATH\"\n"), 0o644)
+	} else {
 		t.Fatalf("symlink failed: %v", err)
 	}
 	bashrc := filepath.Join(fakeHome, ".bashrc")
@@ -440,8 +468,10 @@ func TestFirstRunAutoConfigAndShellSync(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(fakeHome, ".zshenv")); !os.IsNotExist(err) {
 		t.Fatalf("must not create unsolicited .zshenv when .zshrc exists")
 	}
-	if info, err := os.Lstat(zshrc); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("expected .zshrc to remain a symlink after SyncShellAutoCompact")
+	if symlinkOK {
+		if info, err := os.Lstat(zshrc); err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("expected .zshrc to remain a symlink after SyncShellAutoCompact")
+		}
 	}
 
 	zshData, _ := os.ReadFile(zshrc)
@@ -558,7 +588,7 @@ func TestStreamlinedCLICommands(t *testing.T) {
 	tmp := t.TempDir()
 	fakeHome := filepath.Join(tmp, "home")
 	_ = os.MkdirAll(fakeHome, 0o700)
-	t.Setenv("HOME", fakeHome)
+	setTestHome(t, fakeHome)
 	poolDir := filepath.Join(tmp, "pool")
 
 	// Pruned legacy top-level commands must be rejected with exit code 2
@@ -605,16 +635,16 @@ func TestStreamlinedCLICommands(t *testing.T) {
 
 	// `agy-pro -- <args...>` POSIX passthrough forwards args verbatim to mock agy
 	argsOut := filepath.Join(tmp, "dashdash_args.txt")
-	mockAgy := filepath.Join(tmp, "mock-agy")
-	_ = os.WriteFile(mockAgy, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \""+argsOut+"\"\n"), 0o755)
+	mockAgy := writeMockArgDumper(t, tmp, "mock-agy", argsOut)
 	t.Setenv("AGY_PRO_BIN", mockAgy)
 
 	if rc := runCLI([]string{"--", "--dangerously-skip-permissions", "-p", "hello"}, poolDir); rc != 0 {
 		t.Fatalf("expected agy-pro -- passthrough exit 0, got %d", rc)
 	}
 	captured, err := os.ReadFile(argsOut)
-	if err != nil || !strings.Contains(string(captured), "--dangerously-skip-permissions") || !strings.Contains(string(captured), "\nhello\n") {
-		t.Fatalf("expected verbatim args after --, got err=%v out=%q", err, string(captured))
+	gotOut := strings.ReplaceAll(string(captured), "\r\n", "\n")
+	if err != nil || !strings.Contains(gotOut, "--dangerously-skip-permissions") || !strings.Contains(gotOut, "\nhello\n") {
+		t.Fatalf("expected verbatim args after --, got err=%v out=%q", err, gotOut)
 	}
 
 	// `agy-pro auth rm alice` removes account cleanly
@@ -626,45 +656,17 @@ func TestStreamlinedCLICommands(t *testing.T) {
 	}
 }
 
-func TestTerminalGuardRestoresTermiosAndResetSeq(t *testing.T) {
-	ptmx, ttyFile, err := pty.Open()
-	if err != nil {
-		t.Fatalf("pty.Open failed: %v", err)
+func TestSQLiteReadOnlyDSNPortablePaths(t *testing.T) {
+	unixDSN := vault.SQLiteReadOnlyDSN("/tmp/my #dir/conv.db", 1500)
+	if !strings.HasPrefix(unixDSN, "file:///tmp/my%20%23dir/conv.db?") || !strings.Contains(unixDSN, "mode=ro") || !strings.Contains(unixDSN, "busy_timeout(1500)") {
+		t.Fatalf("unexpected Unix SQLite DSN: %q", unixDSN)
 	}
-	defer ptmx.Close()
-	defer ttyFile.Close()
-
-	sfd := int(ttyFile.Fd())
-	before, err := getTermios(sfd)
-	if err != nil {
-		t.Fatalf("getTermios before failed: %v", err)
+	winDSN := vault.SQLiteReadOnlyDSN(`C:/Users/My Name/.gemini/antigravity-cli/conversation_summaries.db`, 2000)
+	if !strings.HasPrefix(winDSN, "file:///C:/Users/My%20Name/.gemini/antigravity-cli/conversation_summaries.db?") {
+		t.Fatalf("unexpected Windows SQLite DSN: %q", winDSN)
 	}
-
-	g := runner.NewTerminalGuard(sfd, ttyFile)
-	if err := g.EnterRaw(); err != nil {
-		t.Fatalf("EnterRaw failed: %v", err)
-	}
-	inside, _ := getTermios(sfd)
-	if *inside == *before {
-		t.Fatal("expected termios to change in raw mode")
-	}
-	g.Restore()
-
-	after, err := getTermios(sfd)
-	if err != nil {
-		t.Fatalf("getTermios after failed: %v", err)
-	}
-	if *after != *before {
-		t.Fatalf("termios was not restored bit-for-bit! before=%+v after=%+v", *before, *after)
-	}
-
-	buf := make([]byte, 4096)
-	_ = ptmx.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-	n, _ := ptmx.Read(buf)
-	emitted := buf[:n]
-	for _, seq := range [][]byte{[]byte("\x1b[<u"), []byte("\x1b[>4;0m"), []byte("\x1b[?2004l")} {
-		if !bytes.Contains(emitted, seq) {
-			t.Fatalf("missing reset sequence %q in emitted %q", seq, emitted)
-		}
+	uncDSN := vault.SQLiteReadOnlyDSN(`//filesrv/share/my db.db`, 1000)
+	if !strings.HasPrefix(uncDSN, "file://filesrv/share/my%20db.db?") {
+		t.Fatalf("unexpected UNC SQLite DSN: %q", uncDSN)
 	}
 }

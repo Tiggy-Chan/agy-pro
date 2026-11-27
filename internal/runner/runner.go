@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -396,20 +395,6 @@ func (g *TerminalGuard) Restore() {
 	_, _ = g.stdout.Write(TerminalResetSeq)
 }
 
-func stopChildGraceful(proc *os.Process, waitCh <-chan error, grace time.Duration) error {
-	if proc == nil {
-		return nil
-	}
-	_ = proc.Signal(syscall.SIGTERM)
-	select {
-	case err := <-waitCh:
-		return err
-	case <-time.After(grace):
-		_ = proc.Kill()
-		return <-waitCh
-	}
-}
-
 func exitCodeOf(err error) int {
 	if err == nil {
 		return 0
@@ -487,11 +472,11 @@ func RunInteractiveOnce(
 	}
 
 	// Let foreground child `agy` handle Ctrl+C (SIGINT) directly without killing agy-pro.
-	signal.Ignore(syscall.SIGINT)
-	defer signal.Reset(syscall.SIGINT)
+	signal.Ignore(os.Interrupt)
+	defer signal.Reset(os.Interrupt)
 
 	stopSigCh := make(chan os.Signal, 2)
-	signal.Notify(stopSigCh, syscall.SIGTERM, syscall.SIGHUP)
+	notifyTerminationSignals(stopSigCh)
 	defer signal.Stop(stopSigCh)
 
 	waitCh := make(chan error, 1)
@@ -678,7 +663,7 @@ func RunPrintOnce(agyBin string, agyArgs []string, logPath string, acct *vault.A
 		cmd.Env = vault.CleanNativeEnv("")
 	}
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	vault.DetachCmd(cmd)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
+
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 func TestFindOpenAndListOpenDetectsKernelFlockOnly(t *testing.T) {
@@ -19,26 +20,26 @@ func TestFindOpenAndListOpenDetectsKernelFlockOnly(t *testing.T) {
 	closedID := "22222222-0000-4000-8000-000000000002"
 	subID := "33333333-0000-4000-8000-000000000003"
 
-	// Create 3 lock files; hold exclusive kernel flock ONLY on openID and subID (simulating live agy + subagent)
+	// Create 3 lock files; hold exclusive kernel lock ONLY on openID and subID (simulating live agy + subagent)
 	lockOpen, err := os.OpenFile(filepath.Join(pdir, openID+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lockOpen.Close()
-	if err := unix.Flock(int(lockOpen.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := vault.TryLockFileExclusive(lockOpen); err != nil {
 		t.Fatal(err)
 	}
-	defer unix.Flock(int(lockOpen.Fd()), unix.LOCK_UN)
+	defer vault.UnlockFile(lockOpen)
 
 	lockSub, err := os.OpenFile(filepath.Join(pdir, subID+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lockSub.Close()
-	if err := unix.Flock(int(lockSub.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := vault.TryLockFileExclusive(lockSub); err != nil {
 		t.Fatal(err)
 	}
-	defer unix.Flock(int(lockSub.Fd()), unix.LOCK_UN)
+	defer vault.UnlockFile(lockSub)
 
 	// Closed session has a leftover lock file with NO active flock
 	_ = os.WriteFile(filepath.Join(pdir, closedID+".lock"), nil, 0o600)

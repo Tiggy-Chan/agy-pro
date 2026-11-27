@@ -207,7 +207,9 @@ func TestDashboardTabSessionsMonitor(t *testing.T) {
 	i18n.SetPref("zh")
 	t.Cleanup(func() { i18n.SetPref("auto") })
 	tmp := t.TempDir()
-	t.Setenv("HOME", filepath.Join(tmp, "empty-home"))
+	emptyHome := filepath.Join(tmp, "empty-home")
+	t.Setenv("HOME", emptyHome)
+	t.Setenv("USERPROFILE", emptyHome)
 	v := vault.New(filepath.Join(tmp, "pool"))
 	m := newModel(v, "/usr/bin/true")
 	now := time.Now()
@@ -243,7 +245,9 @@ func TestDashboardUsageTabAndLanguageKey(t *testing.T) {
 	t.Cleanup(func() { i18n.SetPref("auto") })
 
 	tmp := t.TempDir()
-	t.Setenv("HOME", filepath.Join(tmp, "empty-home"))
+	emptyHome := filepath.Join(tmp, "empty-home")
+	t.Setenv("HOME", emptyHome)
+	t.Setenv("USERPROFILE", emptyHome)
 	v := vault.New(filepath.Join(tmp, "pool"))
 	m := newModel(v, "/usr/bin/true")
 

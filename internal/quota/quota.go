@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
@@ -386,8 +385,8 @@ func probeViaAgyCLI(acct *vault.Account, agyBin string, timeout time.Duration, n
 
 	cmd := exec.Command(agyBin, "--settings", `{"modelProvider":""}`, "--print", "/usage")
 	cmd.Env = vault.CleanNativeEnv(acct.HomeDir)
-	cmd.Stdin = nil // Go attaches /dev/null
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin = nil // Go attaches /dev/null (NUL on Windows)
+	vault.DetachCmd(cmd)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -421,9 +420,7 @@ func probeViaAgyCLI(acct *vault.Account, agyBin string, timeout time.Duration, n
 			return q
 		}
 	case <-timer.C:
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
+		vault.KillProcessTree(cmd.Process)
 		<-done
 		q.Error = i18n.T("quota.err.timeout", int(timeout.Seconds()))
 		return q

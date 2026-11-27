@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square" alt="Go 1.26+" />
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-1F2328?style=flat-square" alt="Linux & macOS" />
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-1F2328?style=flat-square" alt="Linux, macOS & Windows" />
   <img src="https://img.shields.io/badge/Architecture-Zero%20Proxy%20%7C%20Zero%20PTY-2E7D32?style=flat-square" alt="零中转零PTY" />
   <img src="https://img.shields.io/badge/i18n-EN%20%7C%20%E4%B8%AD%E6%96%87-5B6678?style=flat-square" alt="中英双语" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Non--Commercial-3A6FE0?style=flat-square" alt="非商业自用许可" /></a>
@@ -26,36 +26,56 @@
 
 ## 核心特性
 
-- **极速单文件二进制（零 CGO）**：Go 纯静态编译落盘至 `~/.local/bin/agy-pro`（支持 Linux / macOS `amd64`/`arm64`），本地命令 `< 5ms` 瞬出，常驻内存仅 ~4 MB。
-- **零中转直连 + 独立号池**：独立凭据仓位于 `~/.local/state/agy-pro/`（`0700`/`0600`），通过官方 `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` 实现文件凭据隔离（零 `SSH_CONNECTION` 伪造，不碰系统钥匙串），保留真实 `$HOME`、原生模型配置与 `/model` 切换。
+- **极速单文件二进制（零 CGO）**：Go 纯静态编译（支持 Linux / macOS / Windows `amd64`/`arm64`，兼容 PowerShell / CMD / Windows Terminal），本地命令 `< 5ms` 瞬出，常驻内存仅 ~4 MB。
+- **零中转直连 + 独立号池**：独立凭据仓位于 `~/.local/state/agy-pro/`（Windows 为 `%LOCALAPPDATA%\agy-pro\`），通过官方 `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` 实现文件凭据隔离（零 `SSH_CONNECTION` 伪造，不碰系统钥匙串），自动发现本机官方 `agy`（含 Windows `%LOCALAPPDATA%\agy\bin\agy.exe`），保留真实 `$HOME`/`%USERPROFILE%`、原生模型配置与 `/model` 切换。
 - **亚秒级直连查额度 + ~1.5s 撞墙秒切续跑**：
   - 严格 `drain` 轮换（单号用尽再顺延，绝不来回横跳）；支持低余量提前切号水位线（`agy-pro config reserve 10` 或 `--reserve 10`）。
   - 优先通过 Go 标准库共享 HTTP/2 gRPC 直连官方 `FetchQuotaStatus`（4 账号并发 **~0.8s 秒出**），access token 过期或接口变更时无缝回退官方 `agy --print /usage`。
   - 撞上后端致命 429 额度墙时立刻秒切备号并 `--resume` 续跑，独立后台进程异步核验精准 5h/7d 重置时间（若为临时 429 自动解冻）。
 - **三合一交互式终端面板（`agy-pro ui`）**：
   - **号池（`1`）**：双池额度条、按 `J`/`K` 调序、`+/-` 调水位线、`[/]/a` 调压缩阈值、`l`/`d` 登录与移除、`g` 实时切语言。
-  - **当前打开（`2`）**：基于官方 `~/.gemini/antigravity-cli/presence/*.lock` 的非阻塞内核 `flock` 探测，`< 0.5ms` 精准识别本机当前真实打开的所有 `agy` 终端（同时兼容 `agy-pro` 与裸 `agy`，附带实时账号与 TTY 号）；按 `a` 可切换「仅打开 / 含历史」（自动隐藏 0 步空壳历史并将打开中窗口置顶）。
+  - **当前打开（`2`）**：基于官方 `~/.gemini/antigravity-cli/presence/*.lock` 的非阻塞内核文件锁探测（Unix `flock` / Windows `LockFileEx`），`< 0.5ms` 精准识别本机当前真实打开的所有 `agy` 终端（同时兼容 `agy-pro` 与裸 `agy`，附带实时账号与 TTY 信息）；按 `a` 可切换「仅打开 / 含历史」（自动隐藏 0 步空壳历史并将打开中窗口置顶）。
   - **用量统计（`3`）**：只读并发扫描本地 `conversations/*.db`（关联单次调用精确时间戳并归并子代理），按**今日 / 近 7 天 / 全部**统计精确 **总计 / 未缓存输入 / 缓存读 / 命中率 / 输出 / 思考占比**，按模型（含 `TOTAL` 列与尾项汇总）及 Top 消耗会话排行，`Enter`/`Ctrl+N` 直接续聊，按 `r` 强制清缓存重扫。
 - **交互式会话选择器（`agy-pro resume`）**：纯 Go 只读检索 `conversation_summaries.db`（对标 `claude --resume`），自动隐藏 0 步空占位记录，默认当前目录、`Tab` 切全部目录、直接打字实时搜索、`Enter` 当前号恢复、`Ctrl+N` 下个号恢复。
 - **实时终端标签页标题 & 长任务桌面通知**：
-  - 无入侵通过原子 OSC 0 同步会话名（实时响应对话内 `/rename`）与状态（`⠋` 工作中 / `✦` 就绪 / `↻` 切号中），退出自动还原原标签页标题（`AGY_PRO_NO_TITLE=1` 可关闭）。
-  - 连续运行 ≥ 30 秒的任务完成或触发 429 自动切号时发送轻量系统桌面通知（Linux `notify-send` / macOS `osascript`，无头 SSH 自动静默，`agy-pro config notify on|off` 可控）。
+  - 无入侵通过原子 OSC 0 同步会话名（实时响应对话内 `/rename`）与状态（`⠋` 工作中 / `✦` 就绪 / `↻` 切号中），退出自动清空/还原原标签页标题（`AGY_PRO_NO_TITLE=1` 可关闭）。
+  - 连续运行 ≥ 30 秒的任务完成或触发 429 自动切号时发送轻量系统桌面通知（Linux `notify-send` / macOS `osascript` / Windows Toast，无头 SSH 自动静默，`agy-pro config notify on|off` 可控）。
 - **默认 90% Auto-compact（零 dotfiles 副作用）+ 中文 OSC-8 重影防护**：
-  - 默认仅向子进程注入 `AGY_CLI_AUTO_COMPACT_OVERRIDE=90%`，绝不擅自改写 `~/.bashrc`/`~/.zshrc`（仅在显式追加 `--sync-shell` 时同步）。
-  - 默认注入 `AGY_CLI_FORCE_OSC8=0`（可 `AGY_CLI_FORCE_OSC8=1` 覆盖）规避原生 `agy` 中文 OSC-8 超链接 `0x9C`/`0x8D` 光标上跳重影；`launch.lock` 护住多终端并发启动握手；`TerminalGuard` 切号时无条件复位 `termios` 与 Kitty 键盘协议。
-- **外置化多语言包（中/英自动适配）**：默认按系统语言自动选择（中文系统显示中文，其余统一显示英文），支持 `agy-pro config lang <auto|en|zh>`、`AGY_PRO_LANG` 环境变量或在 `agy-pro ui` 中按 `g` 一键切换。所有文案均外置在 JSON 语言包（`internal/i18n/locales/*.json`，并支持在 `~/.local/state/agy-pro/locales/` 投放扩展语言包）。
+  - 默认仅向子进程注入 `AGY_CLI_AUTO_COMPACT_OVERRIDE=90%`，绝不擅自改写 `~/.bashrc`/`~/.zshrc` 或系统环境变量（仅在显式追加 `--sync-shell` 时同步至 shell 配置 / Windows `HKCU\Environment`）。
+  - 默认注入 `AGY_CLI_FORCE_OSC8=0`（可 `AGY_CLI_FORCE_OSC8=1` 覆盖）规避原生 `agy` 中文 OSC-8 超链接 `0x9C`/`0x8D` 光标上跳重影；`launch.lock` 护住多终端并发启动握手；`TerminalGuard` 切号时无条件复位终端模式与 Kitty 键盘协议。
+- **外置化多语言包（中/英自动适配）**：默认按系统语言自动选择（兼容 POSIX `LANG`/`LC_*` 与 Windows 系统区域设置；中文系统显示中文，其余统一显示英文），支持 `agy-pro config lang <auto|en|zh>`、`AGY_PRO_LANG` 环境变量或在 `agy-pro ui` 中按 `g` 一键切换。所有文案均外置在 JSON 语言包（`internal/i18n/locales/*.json`，并支持在状态目录 `locales/` 投放扩展语言包）。
 
 ---
 
 ## 安装与快速上手
 
-**前置条件**：本机已安装官方 `agy` CLI、`Go 1.26+`，且 `~/.local/bin` 已加入 `PATH`。
+**前置条件**：本机已安装官方 `agy` CLI 与 `Go 1.26+`。
+
+**Linux / macOS**（需 `~/.local/bin` 已加入 `PATH`）：
 
 ```bash
 git clone https://github.com/Tiggy-Chan/agy-pro.git
 cd agy-pro
 make test      # 运行全部单元测试与真实 PTY 终端安全测试
 make install   # 编译并安装单二进制至 ~/.local/bin/agy-pro
+```
+
+**Windows（PowerShell）**（直接落盘至官方 `agy` 同一目录 `%LOCALAPPDATA%\agy\bin`，PowerShell 与 CMD 均立即可用）：
+
+```powershell
+git clone https://github.com/Tiggy-Chan/agy-pro.git
+cd agy-pro
+go test ./...
+go build -ldflags="-s -w" -o "$env:LOCALAPPDATA\agy\bin\agy-pro.exe" .\cmd\agy-pro
+```
+
+**Windows（CMD）**：
+
+```cmd
+git clone https://github.com/Tiggy-Chan/agy-pro.git
+cd agy-pro
+go test ./...
+go build -ldflags="-s -w" -o "%LOCALAPPDATA%\agy\bin\agy-pro.exe" .\cmd\agy-pro
 ```
 
 安装完成后登录 2 个及以上 Google 账号即可开跑：
@@ -111,6 +131,10 @@ agy-pro doctor                                 # 运行环境隔离、上游数�
 > 愿 `agy-pro` 始终守住这副“隐形外骨骼”的分寸，抵抗功能膨胀，让原生 `agy` 永远当主角。也要保持清醒：日志正则、库表字段与线协议编号终究是贴着上游的脆弱接缝，唯有把优雅降级与边界测试打牢，才能在上游演进中长久保持小而锋利、稳而不扰的生命力。
 
 ---
+
+## 许可协议
+
+本项目采用 [agy-pro 非商业与个人自用许可协议（Source-Available）](LICENSE)：允许个人免费学习、编译、修改与自用，以及企业内部员工仅在个人工作设备上作日常开发辅助使用。未经版权人书面授权，严禁任何形式的商用、售卖、付费分发、套壳换皮、捆绑进商业产品或搭建付费号池/代部署/SaaS 等牟利行为。
 
 ## 免责声明
 

@@ -17,9 +17,20 @@ func TestParseWorkspaceURIs(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("expected 2 deduplicated paths, got %v", got)
 	}
-	if got[0] != "/tmp/文档/project-a" || got[1] != "/opt/app" {
+	if got[0] != filepath.FromSlash("/tmp/文档/project-a") || got[1] != filepath.FromSlash("/opt/app") {
 		t.Fatalf("unexpected decoded workspaces: %v", got)
 	}
+
+	// Windows drive-letter file:///C:/... and percent-encoded file:///c%3A/... URIs
+	winRaw := `["file:///C:/Users/%E6%96%87%E6%A1%A3/project-a","file:///c%3A/Work/app/"]`
+	winGot := ParseWorkspaceURIs(winRaw)
+	if len(winGot) != 2 {
+		t.Fatalf("expected 2 Windows workspace paths, got %v", winGot)
+	}
+	if winGot[0] != filepath.FromSlash("C:/Users/文档/project-a") || winGot[1] != filepath.FromSlash("c:/Work/app") {
+		t.Fatalf("unexpected decoded Windows workspaces: %v", winGot)
+	}
+
 	if len(ParseWorkspaceURIs("")) != 0 || len(ParseWorkspaceURIs("not-json")) != 0 {
 		t.Fatalf("expected empty slice for invalid input")
 	}
@@ -120,10 +131,10 @@ func TestListReadsTopLevelSessionsReadOnly(t *testing.T) {
 	if list[0].ID != "00000000-0000-4000-8000-000000000001" || list[0].Title != "Build CLI Picker" || !list[0].Running || list[0].Steps != 42 {
 		t.Fatalf("unexpected first session: %+v", list[0])
 	}
-	if !list[0].MatchesDir("/tmp/文档/demo") || list[0].MatchesDir("/work/other") {
+	if !list[0].MatchesDir(filepath.FromSlash("/tmp/文档/demo")) || list[0].MatchesDir(filepath.FromSlash("/work/other")) {
 		t.Fatalf("MatchesDir failed for %+v", list[0].Workspaces)
 	}
-	if got := list[0].PrimaryWorkspace("/tmp"); got != "~/文档/demo" {
+	if got := list[0].PrimaryWorkspace(filepath.FromSlash("/tmp")); got != filepath.FromSlash("~/文档/demo") {
 		t.Fatalf("expected ~/文档/demo, got %q", got)
 	}
 	if list[1].Title != "Fallback preview title" || list[1].Running {

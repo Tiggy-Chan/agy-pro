@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 func (v *Vault) liveDir() string {
@@ -15,21 +13,6 @@ func (v *Vault) liveDir() string {
 		return v.LiveDir
 	}
 	return filepath.Join(v.StateDir, "live")
-}
-
-// CurrentTTYName returns a compact terminal name like "pts/4" or "ttys002", or "" if not a TTY.
-func CurrentTTYName() string {
-	for _, p := range []string{"/proc/self/fd/0", "/dev/fd/0"} {
-		target, err := os.Readlink(p)
-		if err != nil || !strings.HasPrefix(target, "/dev/") {
-			continue
-		}
-		short := strings.TrimPrefix(target, "/dev/")
-		if short != "" && short != "null" {
-			return short
-		}
-	}
-	return ""
 }
 
 func (v *Vault) WriteLiveSession(ls LiveSession) {
@@ -53,14 +36,6 @@ func (v *Vault) RemoveLiveSession(pid int) {
 		return
 	}
 	_ = os.Remove(filepath.Join(v.liveDir(), fmt.Sprintf("%d.json", pid)))
-}
-
-func isProcessAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := unix.Kill(pid, 0)
-	return err == nil || err == unix.EPERM
 }
 
 // ListLiveSessions returns active `agy-pro` managed sessions keyed by conversation ID,

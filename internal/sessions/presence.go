@@ -2,14 +2,11 @@ package sessions
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"golang.org/x/sys/unix"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
@@ -58,17 +55,7 @@ func FindOpenConversationIDs(presenceDir string) ([]string, error) {
 }
 
 func isPresenceLocked(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	err = unix.Flock(int(f.Fd()), unix.LOCK_SH|unix.LOCK_NB)
-	if err != nil {
-		return errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN)
-	}
-	_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
-	return false
+	return vault.IsFileLockedByOther(path)
 }
 
 // ListOpen returns ONLY genuinely open top-level `agy` conversations on this machine,
@@ -87,7 +74,7 @@ func ListOpen(dbPath, presenceDir string) ([]Session, error) {
 	subagentIDs := map[string]bool{}
 
 	if _, statErr := os.Stat(dbPath); statErr == nil {
-		dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)", dbPath)
+		dsn := vault.SQLiteReadOnlyDSN(dbPath, 1000)
 		if db, openErr := sql.Open("sqlite", dsn); openErr == nil {
 			defer db.Close()
 			placeholders := strings.Repeat("?,", len(openIDs))

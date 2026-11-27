@@ -7,10 +7,10 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 const DefaultNotifyMinDuration = 30 * time.Second
@@ -99,7 +99,7 @@ func fmtNotifyDuration(d time.Duration) string {
 
 func dispatchDesktopNotify(title, body string) {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		defer cancel()
 
 		var cmd *exec.Cmd
@@ -122,13 +122,31 @@ end run`
 				return
 			}
 			cmd = exec.CommandContext(ctx, bin, "-a", "agy-pro", "-u", "normal", "--", title, body)
+		case "windows":
+			ps, err := exec.LookPath("powershell.exe")
+			if err != nil {
+				ps, err = exec.LookPath("pwsh.exe")
+				if err != nil {
+					return
+				}
+			}
+			// Pass title & body via env vars + XML escape to prevent command/XML injection.
+			script := `$t=[System.Security.SecurityElement]::Escape($env:AGY_PRO_TOAST_TITLE);` +
+				`$b=[System.Security.SecurityElement]::Escape($env:AGY_PRO_TOAST_BODY);` +
+				`[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]|Out-Null;` +
+				`[Windows.Data.Xml.Dom.XmlDocument,Windows.Data.Xml.Dom.XmlDocument,ContentType=WindowsRuntime]|Out-Null;` +
+				`$x=New-Object Windows.Data.Xml.Dom.XmlDocument;` +
+				`$x.LoadXml("<toast><visual><binding template='ToastText02'><text id='1'>$t</text><text id='2'>$b</text></binding></visual></toast>");` +
+				`[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Windows PowerShell').Show([Windows.UI.Notifications.ToastNotification]::new($x))`
+			cmd = exec.CommandContext(ctx, ps, "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script)
+			cmd.Env = append(os.Environ(), "AGY_PRO_TOAST_TITLE="+title, "AGY_PRO_TOAST_BODY="+body)
 		default:
 			return
 		}
 		cmd.Stdin = nil
 		cmd.Stdout = nil
 		cmd.Stderr = nil
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		vault.DetachCmd(cmd)
 		_ = cmd.Run()
 	}()
 }

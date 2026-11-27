@@ -3,10 +3,10 @@ package sessions
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,6 +29,27 @@ type Session struct {
 
 func DefaultDBPath() string {
 	return filepath.Join(vault.AgyDir(), "conversation_summaries.db")
+}
+
+func isASCIIAlpha(b byte) bool {
+	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
+}
+
+func pathsEqual(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func pathHasPrefix(p, prefix string) bool {
+	if len(p) < len(prefix) {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(p[:len(prefix)], prefix)
+	}
+	return strings.HasPrefix(p, prefix)
 }
 
 // ParseWorkspaceURIs decodes agy's JSON array of URL-encoded file:// URIs into clean local paths.
@@ -54,13 +75,21 @@ func ParseWorkspaceURIs(raw string) []string {
 					p = unesc
 				}
 			}
+			// Convert file:///C:/Users/... (or /c:/...) to C:/Users/... so filepath.Clean matches os.Getwd() on Windows.
+			if len(p) >= 3 && p[0] == '/' && p[2] == ':' && isASCIIAlpha(p[1]) {
+				p = p[1:]
+			}
 		}
 		if p == "" {
 			continue
 		}
-		p = filepath.Clean(p)
-		if !seen[p] {
-			seen[p] = true
+		p = filepath.Clean(filepath.FromSlash(p))
+		key := p
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(p)
+		}
+		if !seen[key] {
+			seen[key] = true
 			out = append(out, p)
 		}
 	}
@@ -109,7 +138,7 @@ func List(dbPath string, limit int) ([]Session, error) {
 		limit = 300
 	}
 
-	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(2000)&_pragma=query_only(1)", dbPath)
+	dsn := vault.SQLiteReadOnlyDSN(dbPath, 2000)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
@@ -168,11 +197,11 @@ func (s Session) MatchesDir(cwd string) bool {
 	evalCwd, _ := filepath.EvalSymlinks(cleanCwd)
 	for _, w := range s.Workspaces {
 		cw := filepath.Clean(w)
-		if cw == cleanCwd {
+		if pathsEqual(cw, cleanCwd) {
 			return true
 		}
 		if evalCwd != "" {
-			if ew, err := filepath.EvalSymlinks(cw); err == nil && ew == evalCwd {
+			if ew, err := filepath.EvalSymlinks(cw); err == nil && pathsEqual(ew, evalCwd) {
 				return true
 			}
 		}
@@ -188,10 +217,10 @@ func (s Session) PrimaryWorkspace(homeDir string) string {
 	p := s.Workspaces[0]
 	if homeDir != "" {
 		cleanHome := filepath.Clean(homeDir)
-		if p == cleanHome {
+		if pathsEqual(p, cleanHome) {
 			return "~"
 		}
-		if strings.HasPrefix(p, cleanHome+string(os.PathSeparator)) {
+		if pathHasPrefix(p, cleanHome+string(os.PathSeparator)) {
 			return "~" + p[len(cleanHome):]
 		}
 	}
@@ -249,7 +278,7 @@ func ResolveRootID(dbPath, convID string) string {
 	if _, err := os.Stat(dbPath); err != nil {
 		return id
 	}
-	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)", dbPath)
+	dsn := vault.SQLiteReadOnlyDSN(dbPath, 1000)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return id
@@ -309,7 +338,7 @@ func (r *MetaReader) ensureOpen() bool {
 	if _, err := os.Stat(r.dbPath); err != nil {
 		return false
 	}
-	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(500)&_pragma=query_only(1)", r.dbPath)
+	dsn := vault.SQLiteReadOnlyDSN(r.dbPath, 500)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return false
@@ -387,7 +416,7 @@ func CheckSchema(dbPath string) SchemaStatus {
 	if _, err := os.Stat(dbPath); err != nil {
 		return SchemaStatus{Exists: false, Err: i18n.T("sessions.db_missing")}
 	}
-	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)", dbPath)
+	dsn := vault.SQLiteReadOnlyDSN(dbPath, 1000)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return SchemaStatus{Exists: true, Err: err.Error()}

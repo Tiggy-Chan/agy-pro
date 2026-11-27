@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 )
@@ -111,6 +110,11 @@ type LiveSession struct {
 func HomeDir() string {
 	h, err := os.UserHomeDir()
 	if err != nil || h == "" {
+		if runtime.GOOS == "windows" {
+			if up := os.Getenv("USERPROFILE"); up != "" {
+				return up
+			}
+		}
 		return os.Getenv("HOME")
 	}
 	return h
@@ -129,10 +133,47 @@ func ConversationsDir() string {
 }
 
 func DefaultStateDir() string {
+	if runtime.GOOS == "windows" {
+		if local := os.Getenv("LOCALAPPDATA"); local != "" {
+			return filepath.Join(local, "agy-pro")
+		}
+		return filepath.Join(HomeDir(), "AppData", "Local", "agy-pro")
+	}
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
 		return filepath.Join(xdg, "agy-pro")
 	}
 	return filepath.Join(HomeDir(), ".local", "state", "agy-pro")
+}
+
+// SQLiteReadOnlyDSN builds a portable SQLite read-only URI DSN across Unix and Windows paths
+// (handling spaces, #, ?, backslashes, Windows drive letters, and UNC shares cleanly).
+func SQLiteReadOnlyDSN(dbPath string, busyTimeoutMs int) string {
+	if busyTimeoutMs <= 0 {
+		busyTimeoutMs = 1000
+	}
+	p := filepath.ToSlash(dbPath)
+	query := fmt.Sprintf("mode=ro&_pragma=busy_timeout(%d)&_pragma=query_only(1)", busyTimeoutMs)
+	if strings.HasPrefix(p, "//") {
+		// UNC share path: //server/share/path -> file://server/share/path?...
+		rest := strings.TrimPrefix(p, "//")
+		host, sharePath, _ := strings.Cut(rest, "/")
+		u := url.URL{
+			Scheme:   "file",
+			Host:     host,
+			Path:     "/" + sharePath,
+			RawQuery: query,
+		}
+		return u.String()
+	}
+	if len(p) >= 2 && p[1] == ':' && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) {
+		p = "/" + p
+	}
+	u := url.URL{
+		Scheme:   "file",
+		Path:     p,
+		RawQuery: query,
+	}
+	return u.String()
 }
 
 func (v *Vault) IsDefaultStateDir() bool {
@@ -156,24 +197,49 @@ func New(stateDir string) *Vault {
 
 func FindAgyBinary() string {
 	if ov := os.Getenv("AGY_PRO_BIN"); ov != "" {
-		if info, err := os.Stat(ov); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+		if info, err := os.Stat(ov); err == nil && IsExecutableFile(ov, info) {
 			return ov
 		}
+		if runtime.GOOS == "windows" && filepath.Ext(ov) == "" {
+			withExe := ov + ".exe"
+			if info, err := os.Stat(withExe); err == nil && IsExecutableFile(withExe, info) {
+				return withExe
+			}
+		}
 	}
-	candidates := []string{
-		filepath.Join(HomeDir(), ".local", "bin", "agy"),
-		"/usr/local/bin/agy",
-		"/usr/bin/agy",
+	var candidates []string
+	var fallback string
+	if runtime.GOOS == "windows" {
+		if local := os.Getenv("LOCALAPPDATA"); local != "" {
+			p := filepath.Join(local, "agy", "bin", "agy.exe")
+			candidates = append(candidates, p)
+			fallback = p
+		}
+		homeLocal := filepath.Join(HomeDir(), "AppData", "Local", "agy", "bin", "agy.exe")
+		candidates = append(candidates,
+			homeLocal,
+			filepath.Join(HomeDir(), ".local", "bin", "agy.exe"),
+		)
+		if fallback == "" {
+			fallback = homeLocal
+		}
+	} else {
+		fallback = filepath.Join(HomeDir(), ".local", "bin", "agy")
+		candidates = []string{
+			fallback,
+			"/usr/local/bin/agy",
+			"/usr/bin/agy",
+		}
 	}
 	for _, c := range candidates {
-		if info, err := os.Stat(c); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+		if info, err := os.Stat(c); err == nil && IsExecutableFile(c, info) {
 			return c
 		}
 	}
 	if p, err := exec.LookPath("agy"); err == nil {
 		return p
 	}
-	return filepath.Join(HomeDir(), ".local", "bin", "agy")
+	return fallback
 }
 
 func ParseISOTime(raw string) float64 {
@@ -321,7 +387,7 @@ func AtomicWriteFile(dst string, data []byte, perm os.FileMode) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpName, dst); err != nil {
+	if err := renameFileAtomic(tmpName, dst); err != nil {
 		return err
 	}
 	cleanup = false
@@ -345,35 +411,50 @@ func CleanNativeEnv(overrideHome string) []string {
 // autoCompact (or stripped when autoCompact == ""). When forceCompact is false,
 // an existing AGY_CLI_AUTO_COMPACT_OVERRIDE in the caller's environment is preserved
 // or defaulted to DefaultAutoCompact ("80%").
-func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bool) []string {
-	stripSet := make(map[string]struct{}, len(StripEnvKeys)+4)
-	for _, k := range StripEnvKeys {
-		stripSet[k] = struct{}{}
+func normEnvKey(k string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToUpper(k)
 	}
-	stripSet[ForceFileTokenEnvKey] = struct{}{}
+	return k
+}
+
+func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bool) []string {
+	stripSet := make(map[string]struct{}, len(StripEnvKeys)+8)
+	for _, k := range StripEnvKeys {
+		stripSet[normEnvKey(k)] = struct{}{}
+	}
+	stripSet[normEnvKey(ForceFileTokenEnvKey)] = struct{}{}
 	if overrideHome != "" {
-		stripSet["HOME"] = struct{}{}
+		stripSet[normEnvKey("HOME")] = struct{}{}
+		if runtime.GOOS == "windows" {
+			stripSet["USERPROFILE"] = struct{}{}
+			stripSet["HOMEDRIVE"] = struct{}{}
+			stripSet["HOMEPATH"] = struct{}{}
+		}
 	}
 	if forceCompact {
-		stripSet[AutoCompactEnvKey] = struct{}{}
+		stripSet[normEnvKey(AutoCompactEnvKey)] = struct{}{}
 	}
 
 	orig := os.Environ()
-	out := make([]string, 0, len(orig)+5)
+	out := make([]string, 0, len(orig)+6)
 	hasCompactEnv := false
 	hasOSC8Env := false
+	compactKeyNorm := normEnvKey(AutoCompactEnvKey)
+	osc8KeyNorm := normEnvKey(ForceOSC8EnvKey)
 	for _, kv := range orig {
 		k, val, ok := strings.Cut(kv, "=")
 		if !ok {
 			continue
 		}
-		if _, drop := stripSet[k]; drop {
+		nk := normEnvKey(k)
+		if _, drop := stripSet[nk]; drop {
 			continue
 		}
-		if k == AutoCompactEnvKey && strings.TrimSpace(val) != "" {
+		if nk == compactKeyNorm && strings.TrimSpace(val) != "" {
 			hasCompactEnv = true
 		}
-		if k == ForceOSC8EnvKey && strings.TrimSpace(val) != "" {
+		if nk == osc8KeyNorm && strings.TrimSpace(val) != "" {
 			hasOSC8Env = true
 		}
 		out = append(out, kv)
@@ -391,6 +472,10 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 	}
 	if overrideHome != "" {
 		out = append(out, "HOME="+overrideHome)
+		if runtime.GOOS == "windows" {
+			// Go's os.UserHomeDir() on Windows reads USERPROFILE (not HOME).
+			out = append(out, "USERPROFILE="+overrideHome)
+		}
 	}
 	if forceCompact {
 		if autoCompact != "" {
@@ -513,7 +598,7 @@ func shellTargetFiles(homeDir string, allowCreateIfNone bool) []string {
 	}
 	// Only create a default rc file if NO existing shell rc file was found at all,
 	// avoiding unsolicited creation of extra dotfiles (like .zshenv or .profile).
-	if len(paths) == 0 && allowCreateIfNone {
+	if len(paths) == 0 && allowCreateIfNone && runtime.GOOS != "windows" {
 		sh := strings.ToLower(filepath.Base(os.Getenv("SHELL")))
 		switch {
 		case runtime.GOOS == "darwin" || strings.Contains(sh, "zsh"):
@@ -747,6 +832,7 @@ func (v *Vault) EnsureFirstRunConfig(homeDir string, applyLaunchctl bool) (bool,
 		}
 		if applyLaunchctl && eff != "" {
 			ApplyLaunchctlAutoCompact(eff, false)
+			touched = append(touched, syncOSUserAutoCompact(eff, false)...)
 		}
 		st.FirstRunConfigured = true
 		didConfigure = true
@@ -774,6 +860,7 @@ func (v *Vault) SetAutoCompact(rawVal, homeDir string, applyLaunchctl bool) (str
 	}
 	if applyLaunchctl {
 		ApplyLaunchctlAutoCompact(eff, true)
+		touched = append(touched, syncOSUserAutoCompact(eff, true)...)
 	}
 	return norm, touched, nil
 }
@@ -964,10 +1051,10 @@ func (v *Vault) withLock(fn func() error) error {
 		return err
 	}
 	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+	if err := lockFileExclusive(f); err != nil {
 		return err
 	}
-	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
+	defer UnlockFile(f)
 	return fn()
 }
 
@@ -977,7 +1064,7 @@ func (v *Vault) ActivateToken(acct *Account) error {
 	})
 }
 
-// AcquireLaunchLock takes an exclusive cross-process flock on launch.lock to serialize
+// AcquireLaunchLock takes an exclusive cross-process file lock on launch.lock to serialize
 // the brief (~50ms) window where a launching `agy` reads ActiveTokenFile() into memory,
 // preventing concurrent terminals from stealing each other's OAuth token during boot.
 func (v *Vault) AcquireLaunchLock() (func(), error) {
@@ -988,7 +1075,7 @@ func (v *Vault) AcquireLaunchLock() (func(), error) {
 	if err != nil {
 		return func() {}, err
 	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+	if err := lockFileExclusive(f); err != nil {
 		_ = f.Close()
 		return func() {}, err
 	}
@@ -998,7 +1085,7 @@ func (v *Vault) AcquireLaunchLock() (func(), error) {
 			return
 		}
 		released = true
-		_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
+		_ = UnlockFile(f)
 		_ = f.Close()
 	}, nil
 }

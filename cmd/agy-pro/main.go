@@ -6,10 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -175,8 +175,37 @@ func spawnDetachedSelf(stateDir string, args ...string) {
 	if stateDir != "" {
 		cmd.Env = append(os.Environ(), "AGY_PRO_STATE_DIR="+stateDir)
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	vault.DetachCmd(cmd)
 	_ = cmd.Start()
+}
+
+func normalizeDirKey(cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	p := filepath.Clean(cwd)
+	if runtime.GOOS == "windows" && len(p) >= 2 && p[1] == ':' && p[0] >= 'a' && p[0] <= 'z' {
+		p = strings.ToUpper(p[:1]) + p[1:]
+	}
+	return p
+}
+
+func lookupLastConv(lastConv map[string]string, cwd string) string {
+	if cwd == "" || len(lastConv) == 0 {
+		return ""
+	}
+	key := normalizeDirKey(cwd)
+	if v := lastConv[key]; v != "" {
+		return v
+	}
+	if runtime.GOOS == "windows" {
+		for k, v := range lastConv {
+			if strings.EqualFold(filepath.Clean(k), key) && v != "" {
+				return v
+			}
+		}
+	}
+	return ""
 }
 
 func applyVerifiedQuota(st *vault.State, email string, q *vault.Quota, now float64) string {
@@ -534,7 +563,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	fmt.Println(ui.RenderCard(body.String(), cardW, ui.ColorRule))
 
 	cwd, _ := os.Getwd()
-	lastConv := st.LastConv[cwd]
+	lastConv := lookupLastConv(st.LastConv, cwd)
 	hints := []string{
 		ui.KeyHint("agy-pro ui", i18n.T("status.hint.ui")),
 	}
@@ -722,7 +751,9 @@ func cmdImport(v *vault.Vault, args []string) int {
 		return 2
 	}
 	p := args[0]
-	if strings.HasPrefix(p, "~/") {
+	if p == "~" {
+		p = vault.HomeDir()
+	} else if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
 		p = filepath.Join(vault.HomeDir(), p[2:])
 	}
 	abs, err := filepath.Abs(p)
@@ -806,10 +837,10 @@ func cmdDoctor(v *vault.Vault) int {
 	okAll := true
 
 	var envLines []string
-	if info, err := os.Stat(agyBin); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+	if info, err := os.Stat(agyBin); err == nil && vault.IsExecutableFile(agyBin, info) {
 		c := exec.Command(agyBin, "--version")
 		c.Stdin = nil
-		c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		vault.DetachCmd(c)
 		out, _ := c.Output()
 		envLines = append(envLines, fmt.Sprintf("  %s %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.agy_bin"), agyBin, ui.SDim.Render("v"+strings.TrimSpace(string(out)))))
 	} else {
@@ -825,28 +856,32 @@ func cmdDoctor(v *vault.Vault) int {
 	env := vault.CleanNativeEnvWithCompact("", compactVal, hasCompact)
 	var leaked []string
 	var homeVal string
+	var userProfileVal string
 	var compactEnv string
 	var forceFileEnv string
 	var forceOSC8Env string
 	for _, kv := range env {
 		k, val, _ := strings.Cut(kv, "=")
-		if k == "HOME" {
+		switch {
+		case strings.EqualFold(k, "HOME"):
 			homeVal = val
-		}
-		if k == vault.AutoCompactEnvKey {
+		case strings.EqualFold(k, "USERPROFILE"):
+			userProfileVal = val
+		case strings.EqualFold(k, vault.AutoCompactEnvKey):
 			compactEnv = val
-		}
-		if k == vault.ForceFileTokenEnvKey {
+		case strings.EqualFold(k, vault.ForceFileTokenEnvKey):
 			forceFileEnv = val
-		}
-		if k == vault.ForceOSC8EnvKey {
+		case strings.EqualFold(k, vault.ForceOSC8EnvKey):
 			forceOSC8Env = val
 		}
 		for _, bad := range vault.StripEnvKeys {
-			if k == bad {
+			if strings.EqualFold(k, bad) {
 				leaked = append(leaked, k)
 			}
 		}
+	}
+	if runtime.GOOS == "windows" && userProfileVal != "" {
+		homeVal = userProfileVal
 	}
 	if len(leaked) == 0 {
 		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.net_iso"), ui.SDim.Render(i18n.T("doctor.net_clean"))))
@@ -1131,7 +1166,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 
 	cwd, _ := os.Getwd()
 	if opts.resumeLast && convID == "" {
-		if saved := st.LastConv[cwd]; saved != "" {
+		if saved := lookupLastConv(st.LastConv, cwd); saved != "" {
 			convID = saved
 			cleanArgs = runner.StripResumeAndPromptArgs(cleanArgs)
 		} else {
@@ -1252,8 +1287,9 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			}
 			if convID != "" && runner.ConversationExists(convID) {
 				savedConv := convID
+				dirKey := normalizeDirKey(cwd)
 				_ = v.UpdateState(func(s *vault.State) {
-					s.LastConv[cwd] = savedConv
+					s.LastConv[dirKey] = savedConv
 				})
 			}
 		}
@@ -1622,5 +1658,8 @@ func runCLI(argv []string, stateDir string) int {
 }
 
 func main() {
-	os.Exit(runCLI(os.Args[1:], ""))
+	restoreConsole := initConsole()
+	code := runCLI(os.Args[1:], "")
+	restoreConsole()
+	os.Exit(code)
 }

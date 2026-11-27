@@ -48,7 +48,12 @@ func TestLocalePacksParityAndFormatVerbs(t *testing.T) {
 }
 
 func TestAutoDetectionSwitchingAndExternalPack(t *testing.T) {
-	t.Cleanup(func() { SetPref("auto") })
+	origOSLocale := detectOSLocale
+	detectOSLocale = func() string { return "" }
+	t.Cleanup(func() {
+		detectOSLocale = origOSLocale
+		SetPref("auto")
+	})
 	t.Setenv("AGY_PRO_LANG", "")
 	t.Setenv("LC_ALL", "")
 	t.Setenv("LC_MESSAGES", "")
@@ -69,6 +74,15 @@ func TestAutoDetectionSwitchingAndExternalPack(t *testing.T) {
 			t.Fatalf("expected en for LANG=%q, got lang=%q pool=%q", loc, Lang(), T("ui.tab.pool"))
 		}
 	}
+
+	// Windows OS locale fallback (when POSIX LANG/LC_* are unset in CMD/PowerShell)
+	t.Setenv("LANG", "")
+	detectOSLocale = func() string { return "zh-CN" }
+	SetPref("auto")
+	if Lang() != "zh" || T("ui.tab.pool") != "号池" {
+		t.Fatalf("expected zh for Windows locale zh-CN, got lang=%q pool=%q", Lang(), T("ui.tab.pool"))
+	}
+	detectOSLocale = func() string { return "" }
 
 	// Explicit preference overrides system locale ("cn" normalizes to "zh")
 	t.Setenv("LANG", "en_US.UTF-8")

@@ -20,11 +20,12 @@ const (
 )
 
 var (
-	mu       sync.RWMutex
-	catalogs map[string]map[string]string
-	active   = DefaultLang
-	pref     = PrefAuto
-	loaded   bool
+	mu             sync.RWMutex
+	catalogs       map[string]map[string]string
+	active         = DefaultLang
+	pref           = PrefAuto
+	loaded         bool
+	detectOSLocale = osLocaleFallback
 )
 
 func init() {
@@ -133,6 +134,9 @@ func DetectSystemLang() string {
 		os.Getenv("LC_MESSAGES"),
 		os.Getenv("LANG"),
 		os.Getenv("LANGUAGE"),
+	}
+	if detectOSLocale != nil {
+		candidates = append(candidates, detectOSLocale())
 	}
 	for _, raw := range candidates {
 		if strings.TrimSpace(raw) == "" {

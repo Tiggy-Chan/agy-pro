@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -144,7 +145,9 @@ func TestProbeAccountDirectGRPCFastPathAndCLIFallback(t *testing.T) {
 	})
 
 	tmp := t.TempDir()
-	t.Setenv("HOME", filepath.Join(tmp, "empty-home"))
+	emptyHome := filepath.Join(tmp, "empty-home")
+	t.Setenv("HOME", emptyHome)
+	t.Setenv("USERPROFILE", emptyHome)
 
 	writeToken := func(name, email, tok, exp string) *vault.Account {
 		dir := filepath.Join(tmp, name)
@@ -167,8 +170,14 @@ func TestProbeAccountDirectGRPCFastPathAndCLIFallback(t *testing.T) {
 
 	// 2. Expired token or gRPC UNAUTHENTICATED -> MUST fall back seamlessly to agy CLI!
 	mockAgy := filepath.Join(tmp, "mock-agy")
-	script := "#!/bin/sh\nprintf 'Gemini Models\\tFive Hour Limit Remaining\\t50%%\\t2030-01-01T00:00:00Z\\nGemini Models\\tWeekly Limit Remaining\\t70%%\\t2030-01-05T00:00:00Z\\n'\n"
-	_ = os.WriteFile(mockAgy, []byte(script), 0o755)
+	if runtime.GOOS == "windows" {
+		mockAgy += ".cmd"
+		script := "@echo off\r\necho Gemini Models   Five Hour Limit Remaining   50%%   2030-01-01T00:00:00Z\r\necho Gemini Models   Weekly Limit Remaining   70%%   2030-01-05T00:00:00Z\r\n"
+		_ = os.WriteFile(mockAgy, []byte(script), 0o755)
+	} else {
+		script := "#!/bin/sh\nprintf 'Gemini Models\\tFive Hour Limit Remaining\\t50%%\\t2030-01-01T00:00:00Z\\nGemini Models\\tWeekly Limit Remaining\\t70%%\\t2030-01-05T00:00:00Z\\n'\n"
+		_ = os.WriteFile(mockAgy, []byte(script), 0o755)
+	}
 
 	acctExpired := writeToken("expired", "bob@example.com", "expired-token", now.Add(-5*time.Minute).Format(time.RFC3339))
 	q2 := ProbeAccount(acctExpired, mockAgy, 5*time.Second)
