@@ -215,6 +215,7 @@ func (s *TabTitleSync) Restore() {
 	}
 	s.pushed = false
 	s.lastEmitted = ""
-	// Pop saved title from xterm/VTE title stack.
-	_, _ = s.w.Write([]byte("\x1b[23;0t"))
+	// Clear OSC 0 first as a fallback for terminals without xterm title-stack support
+	// (e.g. macOS Terminal.app, tmux), then pop the saved title on terminals that support it.
+	_, _ = s.w.Write([]byte("\x1b]0;\x07\x1b[23;0t"))
 }

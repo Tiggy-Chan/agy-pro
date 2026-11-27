@@ -57,11 +57,11 @@ func TestTabTitleSyncLifecycleSpinnerAndRename(t *testing.T) {
 		t.Fatalf("expected switching prefix, got %q", buf.String())
 	}
 
-	// Restore pops title stack cleanly
+	// Restore clears OSC 0 fallback and pops title stack cleanly in one atomic write
 	buf.Reset()
 	s.Restore()
-	if buf.String() != "\x1b[23;0t" {
-		t.Fatalf("expected title stack pop on Restore, got %q", buf.String())
+	if buf.String() != "\x1b]0;\x07\x1b[23;0t" {
+		t.Fatalf("expected OSC 0 clear + title stack pop on Restore, got %q", buf.String())
 	}
 }
 
