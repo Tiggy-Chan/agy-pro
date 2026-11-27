@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
+	"github.com/Tiggy-Chan/agy-pro/internal/usage"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
@@ -230,5 +231,48 @@ func TestDashboardTabSessionsMonitor(t *testing.T) {
 	m = next.(model)
 	if cmd == nil || m.result.Action != ActionResume || !m.result.UseNextAccount || m.result.ConversationID != "bbbb2222-0000-4000-8000-000000000002" {
 		t.Fatalf("expected ActionResume with UseNextAccount=true, got %+v", m.result)
+	}
+}
+
+func TestDashboardUsageTab(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", filepath.Join(tmp, "empty-home"))
+	v := vault.New(filepath.Join(tmp, "pool"))
+	m := newModel(v, "/usr/bin/true")
+
+	// Direct jump to tab 3 (Usage)
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	m = next.(model)
+	if m.tab != tabUsage || !m.usageLoading || cmd == nil {
+		t.Fatalf("expected key 3 to open tabUsage and trigger async scan, got tab=%d loading=%v cmd=%v", m.tab, m.usageLoading, cmd)
+	}
+
+	// Simulate scan completion
+	rep := usage.Report{
+		Range:       usage.RangeToday,
+		ActiveConvs: 2,
+		Total:       usage.BucketStats{Calls: 12, Input: 50000, CacheRead: 950000, Output: 12000, Thinking: 4000},
+		ByModel: []usage.ModelRow{
+			{Model: "gemini-4-neon", Stats: usage.BucketStats{Calls: 12, Input: 50000, CacheRead: 950000, Output: 12000, Thinking: 4000}},
+		},
+		BySession: []usage.SessionRow{
+			{ConvID: "cccc3333-0000-4000-8000-000000000003", Title: "Token 消耗统计测试", Stats: usage.BucketStats{Calls: 12, Input: 50000, CacheRead: 950000, Output: 12000}},
+		},
+		ElapsedMs: 18,
+	}
+	next, _ = m.Update(usageLoadedMsg{rep: rep, autoTried: true})
+	m = next.(model)
+	view := m.View()
+	for _, want := range []string{"用量统计", "1.01M", "95.0%", "gemini-4-neon", "Token 消耗统计测试"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected Usage tab view to contain %q, got:\n%s", want, view)
+		}
+	}
+
+	// Enter resumes top-burning session
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if cmd == nil || m.result.Action != ActionResume || m.result.ConversationID != "cccc3333-0000-4000-8000-000000000003" {
+		t.Fatalf("expected Enter in Usage tab to resume top session, got %+v", m.result)
 	}
 }

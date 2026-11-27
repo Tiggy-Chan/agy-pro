@@ -48,7 +48,7 @@ func renderHelp() string {
 
 	b.WriteString(ui.SHead.Render("核心命令") + "\n")
 	b.WriteString(cmdLine("agy-pro [agy参数...]", "秒开原生 agy（直连 Google，撞 5h/7d 墙自动秒切续跑）"))
-	b.WriteString(cmdLine("agy-pro ui", "交互式面板（Tab 切换号池 / 活跃会话监控，选号启动、刷新、调序、登录/移除）"))
+	b.WriteString(cmdLine("agy-pro ui", "交互式面板（Tab 切换 号池 / 当前打开 / 用量统计，选号启动、刷新、调序）"))
 	b.WriteString(cmdLine("agy-pro status [-r|--reset]", "查看双池看板（-r 在线刷新，--active 仅刷主号，--reset 清冷却）"))
 	b.WriteString(cmdLine("agy-pro resume [ID] [参数]", "交互式会话选择器（当前/全部目录 + 实时搜索；也可直接传会话 ID）"))
 	b.WriteString(cmdLine("agy-pro next [agy参数...]", "切到下一个可用账号；带参数时直接按新号启动 agy"))

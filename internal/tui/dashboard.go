@@ -13,6 +13,7 @@ import (
 	"github.com/Tiggy-Chan/agy-pro/internal/router"
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
+	"github.com/Tiggy-Chan/agy-pro/internal/usage"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
@@ -45,6 +46,7 @@ const (
 	maxConcurrentProbes = 8
 	tabPool             = 0
 	tabSessions         = 1
+	tabUsage            = 2
 )
 
 type model struct {
@@ -62,6 +64,11 @@ type model struct {
 	liveMeta      map[string]vault.LiveSession
 	sessCursor    int
 	sessOffset    int
+	usageScanner  *usage.Scanner
+	usageRange    usage.RangeKind
+	usageReport   *usage.Report
+	usageLoading  bool
+	usageCursor   int
 	homeDir       string
 	width         int
 	height        int
@@ -85,6 +92,8 @@ func newModel(v *vault.Vault, agyBin string) model {
 		agyBin:        agyBin,
 		homeDir:       vault.HomeDir(),
 		liveMeta:      map[string]vault.LiveSession{},
+		usageScanner:  usage.NewScanner("", ""),
+		usageRange:    usage.RangeToday,
 		spinner:       sp,
 		refreshing:    map[string]bool{},
 		autoRefreshOn: true,
@@ -290,6 +299,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reloadSessions()
 		return m, sessionTickCmd()
 
+	case usageLoadedMsg:
+		m.usageLoading = false
+		if msg.rep.Range != m.usageRange {
+			return m, nil
+		}
+		// If Today has 0 calls on initial open, auto-fallback once to Last 7 Days
+		if !msg.autoTried && m.usageRange == usage.RangeToday && msg.rep.Total.Calls == 0 {
+			m.usageRange = usage.Range7Days
+			m.usageLoading = true
+			return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
+		}
+		rep := msg.rep
+		m.usageReport = &rep
+		if maxS := len(rep.BySession); maxS > 5 {
+			maxS = 5
+		} else if m.usageCursor >= maxS && maxS > 0 {
+			m.usageCursor = maxS - 1
+		}
+		if m.usageCursor < 0 {
+			m.usageCursor = 0
+		}
+		return m, nil
+
 	case autoRefreshStartMsg:
 		if !m.autoRefreshOn || len(m.order) == 0 {
 			return m, nil
@@ -361,13 +393,69 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "tab":
-			if m.tab == tabPool {
-				m.tab = tabSessions
-				m.reloadSessions()
-			} else {
-				m.tab = tabPool
+			return m.switchTab((m.tab + 1) % 3)
+
+		case "shift+tab":
+			return m.switchTab((m.tab + 2) % 3)
+
+		case "1":
+			return m.switchTab(tabPool)
+
+		case "2":
+			return m.switchTab(tabSessions)
+
+		case "3":
+			return m.switchTab(tabUsage)
+		}
+
+		if m.tab == tabUsage {
+			switch k {
+			case "left", "h":
+				m.usageRange = (m.usageRange + 2) % 3
+				m.usageCursor = 0
+				m.usageLoading = true
+				return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
+			case "right", "l", "t":
+				m.usageRange = (m.usageRange + 1) % 3
+				m.usageCursor = 0
+				m.usageLoading = true
+				return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
+			case "r":
+				m.usageLoading = true
+				m.toast = "正在重新统计本地 Token 用量..."
+				m.toastStyle = ui.SHeadDim
+				return m, scanUsageCmd(m.usageScanner, m.usageRange, true)
+			case "up", "k":
+				if m.usageCursor > 0 {
+					m.usageCursor--
+				}
+				return m, nil
+			case "down", "j":
+				if m.usageReport != nil {
+					maxS := len(m.usageReport.BySession)
+					if maxS > 5 {
+						maxS = 5
+					}
+					if m.usageCursor < maxS-1 {
+						m.usageCursor++
+					}
+				}
+				return m, nil
+			case "enter":
+				if m.usageReport != nil && m.usageCursor < len(m.usageReport.BySession) {
+					sel := m.usageReport.BySession[m.usageCursor]
+					m.result = Result{Action: ActionResume, ConversationID: sel.ConvID, UseNextAccount: false}
+					return m, tea.Quit
+				}
+				return m, nil
+			case "ctrl+n":
+				if m.usageReport != nil && m.usageCursor < len(m.usageReport.BySession) {
+					sel := m.usageReport.BySession[m.usageCursor]
+					m.result = Result{Action: ActionResume, ConversationID: sel.ConvID, UseNextAccount: true}
+					return m, tea.Quit
+				}
+				return m, nil
 			}
-			m.toast = ""
 			return m, nil
 		}
 
@@ -600,6 +688,24 @@ func (m *model) applyAutoCompact(raw string) {
 	m.toastStyle = ui.SGood
 }
 
+func (m model) switchTab(target int) (tea.Model, tea.Cmd) {
+	m.tab = target
+	m.toast = ""
+	switch target {
+	case tabSessions:
+		m.reloadSessions()
+		return m, nil
+	case tabUsage:
+		if m.usageReport == nil && !m.usageLoading {
+			m.usageLoading = true
+			return m, scanUsageCmd(m.usageScanner, m.usageRange, false)
+		}
+		return m, nil
+	default:
+		return m, nil
+	}
+}
+
 func (m model) runningSessionCount() int {
 	n := 0
 	for _, s := range m.sessionsList {
@@ -632,7 +738,7 @@ func (m model) View() string {
 		}
 	}
 
-	// ---- Header with Pool / Live Open Sessions Tabs ----
+	// ---- Header with 3 Tabs: Pool / Open Sessions / Token Usage ----
 	runCnt := m.runningSessionCount()
 	sessLabel := "当前打开"
 	if m.openCount > 0 {
@@ -640,15 +746,20 @@ func (m model) View() string {
 	}
 	pillPool := ui.SDim.Render("号池")
 	pillSess := ui.SDim.Render(sessLabel)
-	if m.tab == tabPool {
+	pillUsage := ui.SDim.Render("用量统计")
+	switch m.tab {
+	case tabPool:
 		pillPool = ui.BadgeActive.Render("号池")
-	} else {
+	case tabSessions:
 		pillSess = ui.BadgeActive.Render(sessLabel)
+	case tabUsage:
+		pillUsage = ui.BadgeActive.Render("用量统计")
 	}
 
-	leftHead := ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version) + "  " + pillPool + " " + pillSess
+	leftHead := ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version) + "  " + pillPool + " " + pillSess + " " + pillUsage
 	var headerLine string
-	if m.tab == tabPool {
+	switch m.tab {
+	case tabPool:
 		metaParts := []string{
 			ui.SDim.Render(fmt.Sprintf("reserve %.0f%%", m.state.ReservePct)),
 			ui.SDim.Render("compact " + vault.DisplayAutoCompact(m.state)),
@@ -663,12 +774,28 @@ func (m model) View() string {
 		} else {
 			headerLine += "  " + rightHead
 		}
-	} else {
+	case tabSessions:
 		scopeTag := "仅打开"
 		if m.showAllSess {
 			scopeTag = "含历史"
 		}
 		rightHead := ui.SDim.Render(fmt.Sprintf("%s · %d 运行 / %d 打开", scopeTag, runCnt, m.openCount))
+		headerLine = leftHead
+		if gap := innerW - lipgloss.Width(leftHead) - lipgloss.Width(rightHead); gap > 1 {
+			headerLine += strings.Repeat(" ", gap) + rightHead
+		} else {
+			headerLine += "  " + rightHead
+		}
+	case tabUsage:
+		rangePills := make([]string, 0, 3)
+		for _, rk := range []usage.RangeKind{usage.RangeToday, usage.Range7Days, usage.RangeAll} {
+			if rk == m.usageRange {
+				rangePills = append(rangePills, ui.SAccentB.Render("["+rk.Label()+"]"))
+			} else {
+				rangePills = append(rangePills, ui.SDim.Render(rk.Label()))
+			}
+		}
+		rightHead := strings.Join(rangePills, " ")
 		headerLine = leftHead
 		if gap := innerW - lipgloss.Width(leftHead) - lipgloss.Width(rightHead); gap > 1 {
 			headerLine += strings.Repeat(" ", gap) + rightHead
@@ -682,7 +809,9 @@ func (m model) View() string {
 	body.WriteString(headerLine + "\n")
 	body.WriteString(ui.Hairline(innerW) + "\n")
 
-	if m.tab == tabSessions {
+	if m.tab == tabUsage {
+		body.WriteString(m.renderUsageBody(innerW))
+	} else if m.tab == tabSessions {
 		body.WriteString(m.renderSessionsBody(innerW))
 	} else if len(m.order) == 0 {
 		body.WriteString("\n" + ui.SAmber.Render("  号池为空 — 按 l 调用官方 agy acp --login 添加首个账号") + "\n\n")
@@ -771,9 +900,20 @@ func (m model) View() string {
 
 	// ---- Footer Keybinds ----
 	var keys []string
-	if m.tab == tabSessions {
+	switch m.tab {
+	case tabUsage:
 		keys = []string{
-			ui.KeyHint("tab", "切回号池"),
+			ui.KeyHint("tab/1-3", "切视图"),
+			ui.KeyHint("←/→/t", "今日/7天/全部"),
+			ui.KeyHint("↑↓", "选会话"),
+			ui.KeyHint("enter", "当前号恢复"),
+			ui.KeyHint("ctrl+n", "下个号恢复"),
+			ui.KeyHint("r", "重扫"),
+			ui.KeyHint("q", "退出"),
+		}
+	case tabSessions:
+		keys = []string{
+			ui.KeyHint("tab/1-3", "切视图"),
 			ui.KeyHint("↑↓", "选择"),
 			ui.KeyHint("a", "仅打开/含历史"),
 			ui.KeyHint("enter", "当前号恢复"),
@@ -781,9 +921,9 @@ func (m model) View() string {
 			ui.KeyHint("r", "刷新"),
 			ui.KeyHint("q", "退出"),
 		}
-	} else {
+	default:
 		keys = []string{
-			ui.KeyHint("tab", "当前打开"),
+			ui.KeyHint("tab/1-3", "切视图"),
 			ui.KeyHint("↑↓", "选择"),
 			ui.KeyHint("enter", "启动 agy"),
 			ui.KeyHint("s", "设为主号"),

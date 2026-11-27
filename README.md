@@ -32,7 +32,7 @@ make install   # 编译并安装单二进制至 ~/.local/bin/agy-pro
 agy-pro                                        # 秒开原生 agy（直连 Google + 撞 5h/7d 墙自动秒切续跑）
 agy-pro -- <agy原生参数...>                     # POSIX 显式透传全部原生参数给 agy（如 --dangerously-skip-permissions）
 
-agy-pro ui                                     # 交互式号池与活跃会话仪表盘（Tab 切号池/活跃会话监控、选号启动、刷新、调序、调水位线/压缩、登录移除）
+agy-pro ui                                     # 交互式面板（Tab 切换 号池 / 当前打开(内核 flock 精准识别) / 用量统计(精确 Token 消耗)）
 agy-pro status [-r] [--active] [--reset]       # <5ms 双池看板（-r 联网刷新、--active 仅刷主号、--reset 清冷却与耗尽缓存、--json）
 agy-pro resume [会话ID] [agy原生参数...]        # 交互式会话选择器（当前/全部目录 + 实时搜索 + Enter/Ctrl+N 恢复；传 ID 时直连恢复）
 agy-pro next [agy原生参数...]                  # 切到下个可用账号；带参数时直接按新号启动 agy（兼容 --dangerously-skip-permissions / -c / --conversation）
