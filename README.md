@@ -14,6 +14,7 @@
 - **极速异步秒切（~1.5s）+ 亚秒级直连双池核验**：撞上 `agy` 后端致命 429 额度墙时立刻秒切到下一个可用账号并 `--resume` 续跑；双池额度查询（`status -r` / `ui` / 后台核验）优先通过 Go 原生 HTTP/2 gRPC 直连官方 `FetchQuotaStatus` 接口（**~0.5s 并发秒出**，不冷启动 `agy` 进程），仅在 access token 过期或接口变更时自动回退至官方 `agy --print /usage` 完成刷新续签。
 - **低余量水位线提前切号**：支持 `agy-pro config reserve 10`（或单次 `--reserve 10`），新会话启动前若主号剩余额度低于水位线，直接提前顺滑切至满血备号，大幅减少长任务中途撞墙概率。
 - **默认 80% Auto-compact + 首次启动自动配置**：内置 `Auto-compact = 80%` 默认配置（通过官方 `AGY_CLI_AUTO_COMPACT_OVERRIDE` 生效），首次启动时自动写入状态并同步配置 Shell 环境使原生 `agy` 一并生效；支持在 `agy-pro ui` 中按 `[` / `]` 实时步进微调（`a` 一键重置/开关）或通过 `agy-pro config auto-compact` / `--auto-compact` 自行修改。
+- **实时终端标签页标题与运行状态同步**：无入侵通过 OSC 0 自动把会话名与实时运行状态同步到终端标签页——工作中自动旋转 `⠋ <会话名>`、就绪/完成显示 `✳ <会话名>`、切号中显示 `↻ <会话名>`；支持对话内直接用官方 `/rename <名字>` 实时改名同步（或启动时传入 `--title <名称>`），多标签页并行开发一目了然；退出时自动还原原标签页标题（设 `AGY_PRO_NO_TITLE=1` 可关闭）。
 - **零 PTY 中间层 + 中文 OSC-8 重影防护**：交互会话采用原生 TTY 直通（`stdin/stdout/stderr` 直接继承，不套二层 PTY 转发），默认传入官方 `AGY_CLI_FORCE_OSC8=0`（可通过 `AGY_CLI_FORCE_OSC8=1` 手动开启）规避原生 `agy` 在中文文件路径 OSC-8 超链接中未做 percent-encoding 触发 C1 `0x9C`/`0x8D` 光标上跳导致的全屏双/三重影问题；所有后台查询严格脱离 `/dev/tty`；切号/强制终止时由 `TerminalGuard` 无条件恢复 `termios` 并复位 Kitty Keyboard Protocol (`\x1b[<u`) / `modifyOtherKeys` / Bracketed Paste / Mouse Tracking。
 
 ## 安装与编译

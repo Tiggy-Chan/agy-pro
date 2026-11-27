@@ -292,6 +292,16 @@ func TestNextAndUsePassthrough(t *testing.T) {
 		t.Fatalf("unexpected bare next --resume: opts=%+v pass=%v launch=%v", opts, pass, launch)
 	}
 
+	// 6b. `--title` flag parsed cleanly without leaking into native agy args
+	tOpts, tPass := parseRunFlags([]string{"--title", "测试任务", "--dangerously-skip-permissions"})
+	if tOpts.title != "测试任务" || strings.Join(tPass, " ") != "--dangerously-skip-permissions" {
+		t.Fatalf("unexpected --title parse: opts=%+v pass=%v", tOpts, tPass)
+	}
+	tOpts2, tPass2 := parseRunFlags([]string{"--title=API重构", "-c"})
+	if tOpts2.title != "API重构" || strings.Join(tPass2, " ") != "-c" {
+		t.Fatalf("unexpected --title= parse: opts=%+v pass=%v", tOpts2, tPass2)
+	}
+
 	// 7. End-to-end mock agy execution: verify `agy-pro next --dangerously-skip-permissions`
 	// advances active account alice -> bob and forwards `--dangerously-skip-permissions` verbatim!
 	tmp := t.TempDir()

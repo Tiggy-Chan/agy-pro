@@ -423,6 +423,7 @@ func RunInteractiveOnce(
 	agyArgs []string,
 	logPath string,
 	initialConvID string,
+	customTitle string,
 	acct *vault.Account,
 	autoSwitch bool,
 	env []string,
@@ -433,6 +434,19 @@ func RunInteractiveOnce(
 	guard := NewTerminalGuard(stdinFd, os.Stdout)
 	_ = guard.Save()
 	defer guard.Restore()
+
+	cwd, _ := os.Getwd()
+	metaReader := sessions.OpenMetaReader("")
+	defer metaReader.Close()
+
+	titleSync := NewTabTitleSync(os.Stdout, guard.IsTTY(), customTitle, filepath.Base(cwd))
+	if initialConvID != "" {
+		if meta, ok := metaReader.Lookup(initialConvID); ok {
+			titleSync.Update(meta.Title, meta.Preview, meta.Running)
+		}
+	}
+	titleSync.Start()
+	defer titleSync.Restore()
 
 	cmd := exec.Command(agyBin, agyArgs...)
 	if len(env) > 0 {
@@ -502,17 +516,26 @@ loop:
 				if vr.q != nil && vr.q.Error == "" {
 					verifiedQuota = vr.q
 				}
+				titleSync.SetSwitching()
 				waitErr = stopChildGraceful(cmd.Process, waitCh, 1500*time.Millisecond)
 				break loop
 			}
 		case <-ticker.C:
 			newOff, cID, aEm, qLine := ScanLog(logPath, logOffset)
 			logOffset = newOff
-			if cID != "" {
+			if cID != "" && cID != convID {
+				if convID != "" {
+					titleSync.OnConversationSwitch()
+				}
 				convID = cID
 			}
 			if aEm != "" {
 				authEmail = aEm
+			}
+			if convID != "" {
+				if meta, ok := metaReader.Lookup(convID); ok {
+					titleSync.Update(meta.Title, meta.Preview, meta.Running)
+				}
 			}
 			// Fast path: agy logged a fatal turn-ending `agent executor error: ... (ResourceExhausted, HTTP 429)`
 			// AFTER exhausting all internal retries -> wait 1.0s for trajectory flush, then switch immediately
@@ -525,6 +548,7 @@ loop:
 				quotaHit = true
 				exhaustionKind = "fast"
 				quotaText = fatalLine
+				titleSync.SetSwitching()
 				waitErr = stopChildGraceful(cmd.Process, waitCh, 1500*time.Millisecond)
 				break loop
 			}

@@ -60,6 +60,7 @@ func renderHelp() string {
 
 	b.WriteString(ui.SHead.Render("启动选项") + "\n")
 	b.WriteString(cmdLine("--account <关键词>", "本次临时指定某个账号"))
+	b.WriteString(cmdLine("--title <名称>", "自定义终端标签页标题（对话内 /rename 或自动命名后实时同步）"))
 	b.WriteString(cmdLine("--reserve <0-50>", "本次覆盖低余量提前切号水位线"))
 	b.WriteString(cmdLine("--auto-compact <值>", "本次覆盖 Auto-compact 阈值（如 80%、800K、off）"))
 	b.WriteString(cmdLine("--refresh", "启动前先联网刷新当前主号额度"))
@@ -875,6 +876,7 @@ func cmdDoctor(v *vault.Vault) int {
 
 type runOptions struct {
 	explicitAccount string
+	title           string
 	autoSwitch      bool
 	refreshBefore   bool
 	forceNext       bool
@@ -900,6 +902,11 @@ func parseRunFlags(argv []string) (runOptions, []string) {
 			i++
 		case strings.HasPrefix(a, "--account="):
 			opts.explicitAccount = strings.TrimPrefix(a, "--account=")
+		case a == "--title" && i+1 < len(argv):
+			opts.title = argv[i+1]
+			i++
+		case strings.HasPrefix(a, "--title="):
+			opts.title = strings.TrimPrefix(a, "--title=")
 		case a == "--reserve" && i+1 < len(argv):
 			val, err := strconv.ParseFloat(strings.TrimSuffix(argv[i+1], "%"), 64)
 			if err != nil || val < 0 || val > 50 {
@@ -1125,7 +1132,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		if printMode {
 			res = runner.RunPrintOnce(agyBin, fullArgs, logPath, acct, opts.autoSwitch, agyEnv)
 		} else {
-			res = runner.RunInteractiveOnce(agyBin, fullArgs, logPath, convID, acct, opts.autoSwitch, agyEnv)
+			res = runner.RunInteractiveOnce(agyBin, fullArgs, logPath, convID, opts.title, acct, opts.autoSwitch, agyEnv)
 		}
 		v.SyncBackToken(acct)
 

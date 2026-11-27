@@ -132,4 +132,23 @@ func TestListReadsTopLevelSessionsReadOnly(t *testing.T) {
 	if root := ResolveRootID(dbPath, "00000000-0000-4000-8000-000000000001"); root != "00000000-0000-4000-8000-000000000001" {
 		t.Fatalf("expected top-level session to stay unchanged, got %q", root)
 	}
+
+	// Live MetaReader observes status & live /rename title updates
+	mr := OpenMetaReader(dbPath)
+	defer mr.Close()
+	meta, ok := mr.Lookup("00000000-0000-4000-8000-000000000001")
+	if !ok || meta.Title != "Build CLI Picker" || !meta.Running {
+		t.Fatalf("unexpected MetaReader lookup #1: ok=%v meta=%+v", ok, meta)
+	}
+	wdb, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("reopen db for update failed: %v", err)
+	}
+	_, _ = wdb.Exec(`UPDATE conversation_summaries SET title = '测试', status = 'CASCADE_RUN_STATUS_IDLE' WHERE conversation_id = ?`, "00000000-0000-4000-8000-000000000001")
+	_ = wdb.Close()
+
+	meta2, ok2 := mr.Lookup("00000000-0000-4000-8000-000000000001")
+	if !ok2 || meta2.Title != "测试" || meta2.Running {
+		t.Fatalf("expected MetaReader to observe /rename '测试' and IDLE, got ok=%v meta=%+v", ok2, meta2)
+	}
 }

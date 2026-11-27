@@ -273,3 +273,82 @@ func ResolveRootID(dbPath, convID string) string {
 	}
 	return cur
 }
+
+// LiveMeta holds lightweight real-time metadata for an active conversation.
+type LiveMeta struct {
+	Title   string
+	Preview string
+	Running bool
+}
+
+// MetaReader keeps a single read-only SQLite handle to conversation_summaries.db
+// for low-overhead (<0.1ms) live polling of conversation title (/rename) and run status.
+type MetaReader struct {
+	dbPath string
+	db     *sql.DB
+}
+
+func OpenMetaReader(dbPath string) *MetaReader {
+	if dbPath == "" {
+		dbPath = DefaultDBPath()
+	}
+	return &MetaReader{dbPath: dbPath}
+}
+
+func (r *MetaReader) ensureOpen() bool {
+	if r == nil {
+		return false
+	}
+	if r.db != nil {
+		return true
+	}
+	if _, err := os.Stat(r.dbPath); err != nil {
+		return false
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=busy_timeout(500)&_pragma=query_only(1)", r.dbPath)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return false
+	}
+	db.SetMaxOpenConns(1)
+	r.db = db
+	return true
+}
+
+func (r *MetaReader) Lookup(convID string) (LiveMeta, bool) {
+	id := strings.TrimSpace(convID)
+	if id == "" || !r.ensureOpen() {
+		return LiveMeta{}, false
+	}
+	var title, preview, status string
+	var notFullyIdle int
+	err := r.db.QueryRow(`
+		SELECT COALESCE(title, ''), COALESCE(preview, ''), COALESCE(status, ''), COALESCE(not_fully_idle, 0)
+		FROM conversation_summaries
+		WHERE conversation_id = ?
+	`, id).Scan(&title, &preview, &status, &notFullyIdle)
+	if err != nil {
+		// Backward-compatible fallback if an older agy schema lacks not_fully_idle
+		if err2 := r.db.QueryRow(`
+			SELECT COALESCE(title, ''), COALESCE(preview, ''), COALESCE(status, '')
+			FROM conversation_summaries
+			WHERE conversation_id = ?
+		`, id).Scan(&title, &preview, &status); err2 != nil {
+			return LiveMeta{}, false
+		}
+	}
+	up := strings.ToUpper(strings.TrimSpace(status))
+	running := up == "CASCADE_RUN_STATUS_RUNNING" || up == "CASCADE_RUN_STATUS_BUSY" || notFullyIdle != 0
+	return LiveMeta{
+		Title:   singleLine(title),
+		Preview: singleLine(preview),
+		Running: running,
+	}, true
+}
+
+func (r *MetaReader) Close() {
+	if r != nil && r.db != nil {
+		_ = r.db.Close()
+		r.db = nil
+	}
+}
