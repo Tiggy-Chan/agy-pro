@@ -138,12 +138,19 @@ func (s *TabTitleSync) Update(dbTitle, dbPreview string, running bool) {
 		if s.state != TabRunning {
 			s.state = TabRunning
 			s.frame = 0
-		} else {
-			s.frame = (s.frame + 1) % len(tabSpinnerFrames)
 		}
 	} else {
 		s.state = TabIdle
 	}
+	s.emitIfChanged()
+}
+
+// TickSpinner advances the braille spinner frame smoothly while running (no-op when idle).
+func (s *TabTitleSync) TickSpinner() {
+	if s == nil || !s.enabled || s.state != TabRunning {
+		return
+	}
+	s.frame = (s.frame + 1) % len(tabSpinnerFrames)
 	s.emitIfChanged()
 }
 

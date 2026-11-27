@@ -26,23 +26,28 @@ func TestTabTitleSyncLifecycleSpinnerAndRename(t *testing.T) {
 		t.Fatalf("expected zero redundant writes when unchanged, got %q", buf.String())
 	}
 
-	// Running state animates braille spinner frames with DB title
+	// Running state animates braille spinner frames smoothly via TickSpinner
 	buf.Reset()
 	s.Update("测试会话", "", true)
 	if buf.String() != "\x1b]0;⠋ 测试会话\x07" {
 		t.Fatalf("expected first spinner frame, got %q", buf.String())
 	}
 	buf.Reset()
-	s.Update("测试会话", "", true)
+	s.TickSpinner()
 	if buf.String() != "\x1b]0;⠙ 测试会话\x07" {
 		t.Fatalf("expected second spinner frame, got %q", buf.String())
 	}
 
-	// Completing turn settles back to ✦
+	// Completing turn settles back to ✦ and TickSpinner becomes a no-op
 	buf.Reset()
 	s.Update("测试会话", "", false)
 	if buf.String() != "\x1b]0;✦ 测试会话\x07" {
 		t.Fatalf("expected idle four-point star on completion, got %q", buf.String())
+	}
+	buf.Reset()
+	s.TickSpinner()
+	if buf.Len() != 0 {
+		t.Fatalf("expected TickSpinner no-op when idle, got %q", buf.String())
 	}
 
 	// Failover displays ↻ indicator

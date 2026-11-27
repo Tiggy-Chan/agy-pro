@@ -498,6 +498,9 @@ func RunInteractiveOnce(
 	ticker := time.NewTicker(350 * time.Millisecond)
 	defer ticker.Stop()
 
+	spinTicker := time.NewTicker(120 * time.Millisecond)
+	defer spinTicker.Stop()
+
 loop:
 	for {
 		select {
@@ -507,6 +510,8 @@ loop:
 			terminatedBySig = true
 			waitErr = stopChildGraceful(cmd.Process, waitCh, 1500*time.Millisecond)
 			break loop
+		case <-spinTicker.C:
+			titleSync.TickSpinner()
 		case vr := <-verifyCh:
 			verifying = false
 			if shouldSwitch, kind := ShouldFailoverAfterProbe(vr.q, vr.line); shouldSwitch {
