@@ -94,6 +94,7 @@ type InteractiveOptions struct {
 	CustomTitle       string
 	NotifyEnabled     bool
 	ReleaseLaunchLock func()
+	OnConvChange      func(convID string)
 }
 
 func StripANSI(s string) string {
@@ -550,6 +551,9 @@ loop:
 					titleSync.OnConversationSwitch()
 				}
 				convID = cID
+				if opts.OnConvChange != nil {
+					opts.OnConvChange(convID)
+				}
 			}
 			if aEm != "" {
 				authEmail = aEm
@@ -583,6 +587,9 @@ loop:
 					titleSync.OnConversationSwitch()
 				}
 				convID = cID
+				if opts.OnConvChange != nil {
+					opts.OnConvChange(convID)
+				}
 			}
 			if aEm != "" {
 				authEmail = aEm

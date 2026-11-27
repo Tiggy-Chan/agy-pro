@@ -90,9 +90,19 @@ type Vault struct {
 	StateDir       string
 	AccountsDir    string
 	LogsDir        string
+	LiveDir        string
 	StateFile      string
 	LockFile       string
 	LaunchLockFile string
+}
+
+type LiveSession struct {
+	PID       int     `json:"pid"`
+	ConvID    string  `json:"conv_id"`
+	Email     string  `json:"email"`
+	TTY       string  `json:"tty,omitempty"`
+	CWD       string  `json:"cwd,omitempty"`
+	StartedAt float64 `json:"started_at"`
 }
 
 func HomeDir() string {
@@ -134,6 +144,7 @@ func New(stateDir string) *Vault {
 		StateDir:       stateDir,
 		AccountsDir:    filepath.Join(stateDir, "accounts"),
 		LogsDir:        filepath.Join(stateDir, "logs"),
+		LiveDir:        filepath.Join(stateDir, "live"),
 		StateFile:      filepath.Join(stateDir, "state.json"),
 		LockFile:       filepath.Join(stateDir, "switch.lock"),
 		LaunchLockFile: filepath.Join(stateDir, "launch.lock"),

@@ -23,6 +23,7 @@ type Session struct {
 	ModifiedAt time.Time
 	Workspaces []string
 	Running    bool
+	Open       bool
 }
 
 func DefaultDBPath() string {

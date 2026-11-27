@@ -56,7 +56,10 @@ type model struct {
 	quotas        map[string]*vault.Quota
 	cursor        int
 	tab           int
+	showAllSess   bool
+	openCount     int
 	sessionsList  []sessions.Session
+	liveMeta      map[string]vault.LiveSession
 	sessCursor    int
 	sessOffset    int
 	homeDir       string
@@ -81,6 +84,7 @@ func newModel(v *vault.Vault, agyBin string) model {
 		vault:         v,
 		agyBin:        agyBin,
 		homeDir:       vault.HomeDir(),
+		liveMeta:      map[string]vault.LiveSession{},
 		spinner:       sp,
 		refreshing:    map[string]bool{},
 		autoRefreshOn: true,
@@ -100,11 +104,38 @@ func newModel(v *vault.Vault, agyBin string) model {
 }
 
 func (m *model) reloadSessions() {
-	list, err := sessions.ListActiveFirst("", 60)
-	if err != nil {
-		return
+	m.liveMeta = m.vault.ListLiveSessions()
+	openList, _ := sessions.ListOpen("", "")
+	m.openCount = len(openList)
+	openSet := make(map[string]bool, len(openList))
+	for _, s := range openList {
+		openSet[s.ID] = true
 	}
-	m.sessionsList = list
+
+	if !m.showAllSess {
+		m.sessionsList = openList
+	} else {
+		allList, err := sessions.ListActiveFirst("", 60)
+		if err != nil {
+			m.sessionsList = openList
+		} else {
+			for i := range allList {
+				if openSet[allList[i].ID] {
+					allList[i].Open = true
+				}
+			}
+			// Keep genuinely open sessions pinned first even in All-history view
+			var pinned, rest []sessions.Session
+			for _, s := range allList {
+				if s.Open {
+					pinned = append(pinned, s)
+				} else {
+					rest = append(rest, s)
+				}
+			}
+			m.sessionsList = append(pinned, rest...)
+		}
+	}
 	if m.sessCursor >= len(m.sessionsList) && len(m.sessionsList) > 0 {
 		m.sessCursor = len(m.sessionsList) - 1
 	}
@@ -356,8 +387,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "r":
 				m.reloadSessions()
-				m.toast = "✓ 已刷新活跃会话列表"
+				m.toast = "✓ 已刷新活跃会话"
 				m.toastStyle = ui.SGood
+				return m, nil
+			case "a":
+				m.showAllSess = !m.showAllSess
+				m.sessCursor = 0
+				m.sessOffset = 0
+				m.reloadSessions()
+				if m.showAllSess {
+					m.toast = "已切换为：含历史会话（打开中置顶）"
+				} else {
+					m.toast = "已切换为：仅显示当前真实打开的会话"
+				}
+				m.toastStyle = ui.SHeadDim
 				return m, nil
 			case "enter":
 				if len(m.sessionsList) > 0 {
@@ -589,11 +632,11 @@ func (m model) View() string {
 		}
 	}
 
-	// ---- Header with Pool / Live Sessions Tabs ----
+	// ---- Header with Pool / Live Open Sessions Tabs ----
 	runCnt := m.runningSessionCount()
-	sessLabel := "活跃会话"
-	if runCnt > 0 {
-		sessLabel = fmt.Sprintf("活跃会话 %d", runCnt)
+	sessLabel := "当前打开"
+	if m.openCount > 0 {
+		sessLabel = fmt.Sprintf("当前打开 %d", m.openCount)
 	}
 	pillPool := ui.SDim.Render("号池")
 	pillSess := ui.SDim.Render(sessLabel)
@@ -621,7 +664,11 @@ func (m model) View() string {
 			headerLine += "  " + rightHead
 		}
 	} else {
-		rightHead := ui.SDim.Render(fmt.Sprintf("%d 运行中 · 共 %d", runCnt, len(m.sessionsList)))
+		scopeTag := "仅打开"
+		if m.showAllSess {
+			scopeTag = "含历史"
+		}
+		rightHead := ui.SDim.Render(fmt.Sprintf("%s · %d 运行 / %d 打开", scopeTag, runCnt, m.openCount))
 		headerLine = leftHead
 		if gap := innerW - lipgloss.Width(leftHead) - lipgloss.Width(rightHead); gap > 1 {
 			headerLine += strings.Repeat(" ", gap) + rightHead
@@ -728,14 +775,15 @@ func (m model) View() string {
 		keys = []string{
 			ui.KeyHint("tab", "切回号池"),
 			ui.KeyHint("↑↓", "选择"),
+			ui.KeyHint("a", "仅打开/含历史"),
 			ui.KeyHint("enter", "当前号恢复"),
 			ui.KeyHint("ctrl+n", "下个号恢复"),
-			ui.KeyHint("r", "立即刷新"),
+			ui.KeyHint("r", "刷新"),
 			ui.KeyHint("q", "退出"),
 		}
 	} else {
 		keys = []string{
-			ui.KeyHint("tab", "活跃会话"),
+			ui.KeyHint("tab", "当前打开"),
 			ui.KeyHint("↑↓", "选择"),
 			ui.KeyHint("enter", "启动 agy"),
 			ui.KeyHint("s", "设为主号"),
@@ -759,8 +807,21 @@ func (m model) View() string {
 	return "\n" + card + "\n" + footer + "\n"
 }
 
+func shortAccountLabel(email string) string {
+	if email == "" {
+		return "native"
+	}
+	if local, _, ok := strings.Cut(email, "@"); ok && local != "" {
+		return local
+	}
+	return email
+}
+
 func (m model) renderSessionsBody(innerW int) string {
 	if len(m.sessionsList) == 0 {
+		if !m.showAllSess {
+			return "\n" + ui.SAmber.Render("  当前本机没有正在打开的 agy 会话（按 a 可查看全部历史，或按 Tab 切回号池启动）") + "\n"
+		}
 		return "\n" + ui.SAmber.Render("  暂无会话记录（启动一次 agy 后自动同步）") + "\n"
 	}
 	var b strings.Builder
@@ -771,14 +832,19 @@ func (m model) renderSessionsBody(innerW int) string {
 		end = len(m.sessionsList)
 	}
 
-	showWS := innerW >= 82
-	wsColW := 22
+	showWS := innerW >= 86
+	wsColW := 20
 	if !showWS {
 		wsColW = 0
 	}
-	titleMaxW := innerW - 26 - wsColW
-	if titleMaxW < 18 {
-		titleMaxW = 18
+	showAcct := innerW >= 74
+	acctColW := 13
+	if !showAcct {
+		acctColW = 0
+	}
+	titleMaxW := innerW - 26 - wsColW - acctColW
+	if titleMaxW < 16 {
+		titleMaxW = 16
 	}
 
 	var rows [][]string
@@ -791,10 +857,13 @@ func (m model) renderSessionsBody(innerW int) string {
 			ptr = ui.SAccentB.Render("❯")
 		}
 		var stCell string
-		if s.Running {
+		switch {
+		case s.Open && s.Running:
 			stCell = ui.SGoodB.Render(m.spinner.View() + " 运行")
-		} else {
-			stCell = ui.SDim.Render("✦ 空闲")
+		case s.Open:
+			stCell = ui.SHeadDim.Render("● 打开")
+		default:
+			stCell = ui.SDim.Render("✦ 历史")
 		}
 
 		title := ui.Truncate(s.Title, titleMaxW)
@@ -802,27 +871,46 @@ func (m model) renderSessionsBody(innerW int) string {
 			title = ui.SAccentB.Render(title)
 		} else if s.Running {
 			title = ui.SBold.Render(title)
+		} else if !s.Open {
+			title = ui.SDim.Render(title)
+		}
+
+		live, hasLive := m.liveMeta[s.ID]
+		acctCell := ui.SDim.Render("-")
+		if s.Open {
+			if hasLive {
+				acctCell = ui.SGood.Render(ui.Truncate(shortAccountLabel(live.Email), acctColW))
+			} else {
+				acctCell = ui.SDim.Render("native")
+			}
 		}
 
 		stepsCell := ui.SDim.Render(fmt.Sprintf("%d步", s.Steps))
 		ageCell := ui.SDim.Render(sessions.FmtRelativeTime(s.ModifiedAt, now))
-		if showWS {
-			wsCell := ui.SHeadDim.Render(ui.Truncate(s.PrimaryWorkspace(m.homeDir), wsColW))
-			rows = append(rows, []string{ptr, stCell, title, wsCell, stepsCell, ageCell})
-		} else {
-			rows = append(rows, []string{ptr, stCell, title, stepsCell, ageCell})
+		row := []string{ptr, stCell, title}
+		if showAcct {
+			row = append(row, acctCell)
 		}
+		if showWS {
+			row = append(row, ui.SHeadDim.Render(ui.Truncate(s.PrimaryWorkspace(m.homeDir), wsColW)))
+		}
+		row = append(row, stepsCell, ageCell)
+		rows = append(rows, row)
 	}
 
-	if showWS {
-		headers := []string{"", "STATE", "SESSION", "WORKSPACE", "STEPS", "TIME"}
-		aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight}
-		b.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 2))
-	} else {
-		headers := []string{"", "STATE", "SESSION", "STEPS", "TIME"}
-		aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight}
-		b.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 2))
+	headers := []string{"", "STATE", "SESSION"}
+	aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignLeft}
+	if showAcct {
+		headers = append(headers, "ACCOUNT")
+		aligns = append(aligns, ui.AlignLeft)
 	}
+	if showWS {
+		headers = append(headers, "WORKSPACE")
+		aligns = append(aligns, ui.AlignLeft)
+	}
+	headers = append(headers, "STEPS", "TIME")
+	aligns = append(aligns, ui.AlignRight, ui.AlignRight)
+	b.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 2))
 	b.WriteByte('\n')
 
 	sel := m.sessionsList[m.sessCursor]
@@ -831,7 +919,19 @@ func (m model) renderSessionsBody(innerW int) string {
 	if len(idShort) > 8 {
 		idShort = idShort[:8]
 	}
-	rightMeta := ui.SDim.Render("  ·  ID ") + ui.SHeadDim.Render(idShort) + ui.SDim.Render("  ·  每 2s 自动刷新")
+	var metaParts []string
+	if live, ok := m.liveMeta[sel.ID]; ok {
+		if live.TTY != "" {
+			metaParts = append(metaParts, "终端 "+live.TTY)
+		}
+		if live.Email != "" {
+			metaParts = append(metaParts, "账号 "+live.Email)
+		}
+	} else if sel.Open {
+		metaParts = append(metaParts, "本机进程已持有 presence 锁")
+	}
+	metaParts = append(metaParts, "ID "+idShort)
+	rightMeta := ui.SDim.Render("  ·  " + strings.Join(metaParts, "  ·  "))
 	wsMax := innerW - lipgloss.Width("目录  ") - lipgloss.Width(rightMeta)
 	if wsMax < 12 {
 		wsMax = 12

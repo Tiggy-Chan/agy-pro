@@ -855,11 +855,18 @@ func cmdDoctor(v *vault.Vault) int {
 	}
 
 	schemaSt := sessions.CheckSchema("")
+	openSessions, _ := sessions.ListOpen("", "")
 	switch {
 	case !schemaSt.Exists:
 		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SAmber.Render("!"), ui.SDim.Render("未生成 conversation_summaries.db")))
 	case schemaSt.OK:
-		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SGood.Render("✓"), ui.SDim.Render(fmt.Sprintf("只读兼容 (%d 个会话，%d 个运行中)", schemaSt.TotalTopLevel, schemaSt.RunningCount))))
+		openRun := 0
+		for _, osess := range openSessions {
+			if osess.Running {
+				openRun++
+			}
+		}
+		envLines = append(envLines, fmt.Sprintf("  %s 会话库契约  %s", ui.SGood.Render("✓"), ui.SDim.Render(fmt.Sprintf("只读兼容 (%d 会话，当前打开 %d / %d 运行)", schemaSt.TotalTopLevel, len(openSessions), openRun))))
 	default:
 		detail := schemaSt.Err
 		if len(schemaSt.Missing) > 0 {
@@ -1190,12 +1197,28 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		if printMode {
 			res = runner.RunPrintOnce(agyBin, fullArgs, logPath, acct, opts.autoSwitch, agyEnv)
 		} else {
+			pid := os.Getpid()
+			ttyName := vault.CurrentTTYName()
+			startedAt := float64(time.Now().Unix())
+			writeLive := func(cid string) {
+				v.WriteLiveSession(vault.LiveSession{
+					PID:       pid,
+					ConvID:    cid,
+					Email:     currentEmail,
+					TTY:       ttyName,
+					CWD:       cwd,
+					StartedAt: startedAt,
+				})
+			}
+			writeLive(convID)
 			res = runner.RunInteractiveOnce(agyBin, fullArgs, logPath, runner.InteractiveOptions{
 				InitialConvID:     convID,
 				CustomTitle:       opts.title,
 				NotifyEnabled:     !st.NotifyDisabled,
 				ReleaseLaunchLock: releaseLaunch,
+				OnConvChange:      writeLive,
 			}, acct, opts.autoSwitch, agyEnv)
+			v.RemoveLiveSession(pid)
 		}
 		v.SyncBackToken(acct)
 
