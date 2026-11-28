@@ -22,6 +22,7 @@ import (
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/tui"
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
+	"github.com/Tiggy-Chan/agy-pro/internal/usage"
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
@@ -34,6 +35,7 @@ var validSubcommands = []string{
 	"resume",
 	"status",
 	"ui",
+	"usage",
 	"use",
 }
 
@@ -49,8 +51,9 @@ func renderHelp() string {
 
 	b.WriteString(ui.SHead.Render(i18n.T("help.core_commands")) + "\n")
 	b.WriteString(cmdLine("agy-pro [flags...]", i18n.T("help.cmd.default")))
-	b.WriteString(cmdLine("agy-pro ui", i18n.T("help.cmd.ui")))
+	b.WriteString(cmdLine("agy-pro ui [--mask]", i18n.T("help.cmd.ui")))
 	b.WriteString(cmdLine("agy-pro status [-r|--reset]", i18n.T("help.cmd.status")))
+	b.WriteString(cmdLine("agy-pro usage [--today|--7d|--all]", i18n.T("help.cmd.usage")))
 	b.WriteString(cmdLine("agy-pro resume [ID] [flags]", i18n.T("help.cmd.resume")))
 	b.WriteString(cmdLine("agy-pro next [flags...]", i18n.T("help.cmd.next")))
 	b.WriteString(cmdLine("agy-pro use <acct> [flags]", i18n.T("help.cmd.use")))
@@ -318,7 +321,7 @@ func statusBadge(isActive, ok bool, kind string, q *vault.Quota, reservePct floa
 }
 
 func cmdStatus(v *vault.Vault, args []string) int {
-	var doRefresh, onlyActive, noAutoInit, asJSON, doReset bool
+	var doRefresh, onlyActive, noAutoInit, asJSON, doReset, maskFlag bool
 	for _, a := range args {
 		switch a {
 		case "-r", "--refresh":
@@ -329,6 +332,8 @@ func cmdStatus(v *vault.Vault, args []string) int {
 			noAutoInit = true
 		case "--reset":
 			doReset = true
+		case "--mask":
+			maskFlag = true
 		case "--json":
 			asJSON = true
 		case "-h", "--help":
@@ -339,6 +344,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 			return 2
 		}
 	}
+	masked := maskFlag || ui.MaskEnabled()
 
 	if doReset {
 		_ = v.UpdateState(func(st *vault.State) {
@@ -401,7 +407,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 			if q.Error != "" {
 				tag = q.Error
 			}
-			ui.StderrProgress(i18n.T("status.probing_progress", done, total, email, tag), false)
+			ui.StderrProgress(i18n.T("status.probing_progress", done, total, ui.DisplayEmail(email, masked), tag), false)
 		})
 		ui.StderrProgress("", true)
 
@@ -435,7 +441,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 		for _, e := range order {
 			ok, why := router.AccountAvailability(e, st, quotas, now)
 			out = append(out, jsonRow{
-				Email:     e,
+				Email:     ui.DisplayEmail(e, masked),
 				Active:    e == active,
 				Available: ok,
 				Status:    why,
@@ -510,11 +516,12 @@ func cmdStatus(v *vault.Vault, args []string) int {
 		if isActive {
 			dot = ui.SGoodB.Render("●")
 		}
-		emailCell := e
+		shownEmail := ui.DisplayEmail(e, masked)
+		emailCell := shownEmail
 		if isActive {
-			emailCell = ui.SBold.Render(e)
+			emailCell = ui.SBold.Render(shownEmail)
 		} else if !ok {
-			emailCell = ui.SDim.Render(e)
+			emailCell = ui.SDim.Render(shownEmail)
 		}
 
 		var g5, g7, claude string
@@ -581,10 +588,263 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	return 0
 }
 
-func cmdUI(v *vault.Vault) int {
+func cmdUsage(args []string) int {
+	rk := usage.RangeToday
+	explicitRange := false
+	asJSON := false
+	for _, a := range args {
+		switch a {
+		case "--today", "-1":
+			rk = usage.RangeToday
+			explicitRange = true
+		case "--7d", "--week", "-7":
+			rk = usage.Range7Days
+			explicitRange = true
+		case "--all", "-a":
+			rk = usage.RangeAll
+			explicitRange = true
+		case "--json":
+			asJSON = true
+		case "-h", "--help":
+			fmt.Println(i18n.T("usage.cli.usage"))
+			return 0
+		default:
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("common.unknown_flag", a))
+			return 2
+		}
+	}
+
+	sc := usage.NewScanner("", "")
+	now := time.Now()
+	rep := sc.Scan(rk, now)
+	if !explicitRange && rk == usage.RangeToday && rep.Total.Calls == 0 {
+		rk = usage.Range7Days
+		rep = sc.Scan(rk, now)
+	}
+
+	if asJSON {
+		type jsonBucket struct {
+			Calls      int     `json:"calls"`
+			Total      int64   `json:"total_tokens"`
+			Input      int64   `json:"input_tokens"`
+			CacheRead  int64   `json:"cache_read_tokens"`
+			CacheWrite int64   `json:"cache_write_tokens"`
+			CacheHit   float64 `json:"cache_hit_pct"`
+			Output     int64   `json:"output_tokens"`
+			Thinking   int64   `json:"thinking_tokens"`
+		}
+		toJB := func(s usage.BucketStats) jsonBucket {
+			return jsonBucket{
+				Calls:      s.Calls,
+				Total:      s.TotalTokens(),
+				Input:      s.Input,
+				CacheRead:  s.CacheRead,
+				CacheWrite: s.CacheWrite,
+				CacheHit:   s.CacheHitPct(),
+				Output:     s.Output,
+				Thinking:   s.Thinking,
+			}
+		}
+		type jsonModel struct {
+			Model string     `json:"model"`
+			Stats jsonBucket `json:"stats"`
+		}
+		type jsonSession struct {
+			ConvID string     `json:"conversation_id"`
+			Title  string     `json:"title"`
+			Stats  jsonBucket `json:"stats"`
+		}
+		models := make([]jsonModel, 0, len(rep.ByModel))
+		for _, mr := range rep.ByModel {
+			models = append(models, jsonModel{Model: mr.Model, Stats: toJB(mr.Stats)})
+		}
+		sessList := make([]jsonSession, 0, len(rep.BySession))
+		for _, sr := range rep.BySession {
+			sessList = append(sessList, jsonSession{ConvID: sr.ConvID, Title: sr.Title, Stats: toJB(sr.Stats)})
+		}
+		rangeCode := "all"
+		if rk == usage.RangeToday {
+			rangeCode = "today"
+		} else if rk == usage.Range7Days {
+			rangeCode = "7d"
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(map[string]any{
+			"range":           rangeCode,
+			"total":           toJB(rep.Total),
+			"active_sessions": rep.ActiveConvs,
+			"by_model":        models,
+			"by_session":      sessList,
+			"scanned_dbs":     rep.ScannedDBs,
+			"elapsed_ms":      rep.ElapsedMs,
+		})
+		return 0
+	}
+
+	termW := ui.TerminalColumns(80)
+	cardW := termW
+	if cardW > 110 {
+		cardW = 110
+	}
+	if cardW < 60 {
+		cardW = 60
+	}
+	innerW := cardW - 6
+
+	rangePills := make([]string, 0, 3)
+	for _, opt := range []usage.RangeKind{usage.RangeToday, usage.Range7Days, usage.RangeAll} {
+		if opt == rk {
+			rangePills = append(rangePills, ui.SAccentB.Render("["+opt.Label()+"]"))
+		} else {
+			rangePills = append(rangePills, ui.SDim.Render(opt.Label()))
+		}
+	}
+	leftHead := ui.Brand("agy-pro") + " " + ui.SDim.Render("v"+vault.Version+" · usage")
+	rightHead := strings.Join(rangePills, " ")
+	headLine := leftHead
+	if gap := innerW - lipgloss.Width(leftHead) - lipgloss.Width(rightHead); gap > 1 {
+		headLine += strings.Repeat(" ", gap) + rightHead
+	} else {
+		headLine += "  " + rightHead
+	}
+
+	var body strings.Builder
+	body.WriteString(headLine + "\n")
+	body.WriteString(ui.Hairline(innerW) + "\n")
+
+	if rep.Total.Calls == 0 {
+		body.WriteString("\n  " + ui.SAmber.Render(i18n.T("usage.cli.empty", rk.Label())) + "\n")
+	} else {
+		tot := rep.Total
+		kpi1 := ui.SHeadDim.Render(i18n.T("usage.kpi.total")) + ui.SBold.Render(usage.FmtTokens(tot.TotalTokens())) +
+			ui.SDim.Render(i18n.T("usage.kpi.tokens_calls")) + ui.SAccentB.Render(fmt.Sprintf("%d", tot.Calls)) + ui.SDim.Render(i18n.T("usage.kpi.calls_unit")) +
+			ui.SBold.Render(fmt.Sprintf("%d", rep.ActiveConvs)) + ui.SDim.Render(i18n.T("usage.kpi.convs_unit")) +
+			ui.SDim.Render(fmt.Sprintf("  (%dms)", rep.ElapsedMs))
+
+		hitPct := tot.CacheHitPct()
+		hitStyle := ui.SGood
+		if hitPct < 50 {
+			hitStyle = ui.SAmber
+		}
+		outInfo := ui.SBold.Render(usage.FmtTokens(tot.Output))
+		if tot.Thinking > 0 {
+			outInfo += ui.SDim.Render(i18n.T("usage.kpi.thinking", tot.ThinkingPct()))
+		}
+		kpi2 := ui.SHeadDim.Render(i18n.T("usage.kpi.input")) + ui.SBold.Render(usage.FmtTokens(tot.Input)) +
+			ui.SDim.Render(i18n.T("usage.kpi.cache_read")) + ui.SBold.Render(usage.FmtTokens(tot.CacheRead)) +
+			" " + hitStyle.Render(fmt.Sprintf("%.1f%%", hitPct)) +
+			ui.SDim.Render(i18n.T("usage.kpi.output")) + outInfo
+
+		body.WriteString("  " + kpi1 + "\n")
+		body.WriteString("  " + kpi2 + "\n")
+		body.WriteString(ui.Hairline(innerW) + "\n")
+
+		displayModels := usage.RollupModels(rep.ByModel, 6, func(n int) string {
+			return i18n.T("usage.other_models", n)
+		})
+		compact := innerW < 88
+		barW := 6
+		if compact {
+			barW = 4
+		}
+		grandTotal := float64(tot.TotalTokens())
+		if grandTotal <= 0 {
+			grandTotal = 1
+		}
+		var mRows [][]string
+		for i, mr := range displayModels {
+			share := float64(mr.Stats.TotalTokens()) * 100.0 / grandTotal
+			nameCell := ui.SHeadDim.Render(ui.Truncate(mr.Model, 22))
+			if i == 0 {
+				nameCell = ui.SBold.Render(ui.Truncate(mr.Model, 22))
+			}
+			callsCell := ui.SDim.Render(fmt.Sprintf("%d", mr.Stats.Calls))
+			totCell := ui.SBold.Render(usage.FmtTokens(mr.Stats.TotalTokens()))
+			inCell := usage.FmtTokens(mr.Stats.Input)
+			crCell := ui.SDim.Render(usage.FmtTokens(mr.Stats.CacheRead))
+			hitCell := ui.SGood.Render(fmt.Sprintf("%.0f%%", mr.Stats.CacheHitPct()))
+			outCell := usage.FmtTokens(mr.Stats.Output)
+			shareCell := ui.RenderShareBar(share, barW)
+			if compact {
+				mRows = append(mRows, []string{nameCell, callsCell, totCell, outCell, shareCell})
+			} else {
+				mRows = append(mRows, []string{nameCell, callsCell, totCell, inCell, crCell, hitCell, outCell, shareCell})
+			}
+		}
+		if compact {
+			body.WriteString(ui.RenderTable(
+				[]string{"MODEL", "CALLS", "TOTAL", "OUTPUT", "SHARE"},
+				mRows,
+				[]ui.Align{ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignLeft},
+				innerW, 0,
+			))
+		} else {
+			body.WriteString(ui.RenderTable(
+				[]string{"MODEL", "CALLS", "TOTAL", "INPUT", "CACHE", "HIT%", "OUTPUT", "SHARE"},
+				mRows,
+				[]ui.Align{ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignLeft},
+				innerW, 0,
+			))
+		}
+		body.WriteByte('\n')
+
+		if len(rep.BySession) > 0 {
+			body.WriteString(ui.Hairline(innerW) + "\n")
+			maxSess := 5
+			if len(rep.BySession) < maxSess {
+				maxSess = len(rep.BySession)
+			}
+			titleMaxW := innerW - 38
+			if titleMaxW < 18 {
+				titleMaxW = 18
+			}
+			var sRows [][]string
+			for i := 0; i < maxSess; i++ {
+				sr := rep.BySession[i]
+				sRows = append(sRows, []string{
+					ui.Truncate(sr.Title, titleMaxW),
+					ui.SDim.Render(i18n.T("usage.calls_short", sr.Stats.Calls)),
+					ui.SBold.Render(usage.FmtTokens(sr.Stats.TotalTokens())),
+					ui.SGood.Render(fmt.Sprintf("%.0f%%", sr.Stats.CacheHitPct())),
+					ui.SDim.Render(usage.FmtTokens(sr.Stats.Output)),
+				})
+			}
+			body.WriteString(ui.RenderTable(
+				[]string{"TOP SESSIONS", "CALLS", "TOTAL", "HIT%", "OUTPUT"},
+				sRows,
+				[]ui.Align{ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight, ui.AlignRight},
+				innerW, 0,
+			))
+		}
+	}
+
+	fmt.Println(ui.RenderCard(body.String(), cardW, ui.ColorRule))
+	hints := []string{
+		ui.KeyHint("agy-pro usage --today|--7d|--all", i18n.T("usage.cli.hint_range")),
+		ui.KeyHint("agy-pro ui", i18n.T("status.hint.ui")),
+	}
+	fmt.Println("  " + strings.Join(hints, ui.SDim.Render("  ·  ")))
+	return 0
+}
+
+func cmdUI(v *vault.Vault, args []string) int {
+	forceMask := false
+	for _, a := range args {
+		switch a {
+		case "--mask":
+			forceMask = true
+		case "-h", "--help":
+			fmt.Println("Usage: agy-pro ui [--mask]")
+			return 0
+		default:
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("common.unknown_flag", a))
+			return 2
+		}
+	}
 	agyBin := vault.FindAgyBinary()
 	for {
-		res, err := tui.Run(v, agyBin)
+		res, err := tui.Run(v, agyBin, forceMask)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("ui.launch_err", err))
 			return 1
@@ -746,11 +1006,21 @@ func cmdLogin(v *vault.Vault) int {
 }
 
 func cmdImport(v *vault.Vault, args []string) int {
-	if len(args) != 1 || args[0] == "-h" || args[0] == "--help" {
+	if len(args) > 1 || (len(args) == 1 && (args[0] == "-h" || args[0] == "--help")) {
 		fmt.Fprintln(os.Stderr, i18n.T("auth.import.usage"))
+		if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+			return 0
+		}
 		return 2
 	}
-	p := args[0]
+	var p string
+	autoCurrent := false
+	if len(args) == 0 {
+		p = vault.ActiveTokenFile()
+		autoCurrent = true
+	} else {
+		p = args[0]
+	}
 	if p == "~" {
 		p = vault.HomeDir()
 	} else if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
@@ -763,7 +1033,11 @@ func cmdImport(v *vault.Vault, args []string) int {
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("✗"), i18n.T("auth.import.not_found", abs))
+		if autoCurrent {
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("auth.import.no_active", abs, ui.SHeadDim.Render("agy-pro auth login")))
+		} else {
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("✗"), i18n.T("auth.import.not_found", abs))
+		}
 		return 1
 	}
 	if !info.IsDir() {
@@ -772,7 +1046,7 @@ func cmdImport(v *vault.Vault, args []string) int {
 			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render("✗"), i18n.T("auth.import.fail", err))
 			return 1
 		}
-		fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("auth.import.ok_one", ui.SBold.Render(email)))
+		fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("auth.import.ok_one", ui.SBold.Render(ui.DisplayEmail(email, ui.MaskEnabled()))))
 		return 0
 	}
 	emails, err := v.ImportDirectory(abs)
@@ -782,7 +1056,7 @@ func cmdImport(v *vault.Vault, args []string) int {
 	}
 	fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("auth.import.ok_many", len(emails), ui.SDim.Render("("+v.AccountsDir+")")))
 	for _, e := range emails {
-		fmt.Printf("  %s %s\n", ui.SGood.Render("·"), e)
+		fmt.Printf("  %s %s\n", ui.SGood.Render("·"), ui.DisplayEmail(e, ui.MaskEnabled()))
 	}
 	return 0
 }
@@ -832,7 +1106,21 @@ func cmdUse(v *vault.Vault, args []string) int {
 	return 0
 }
 
-func cmdDoctor(v *vault.Vault) int {
+func cmdDoctor(v *vault.Vault, args []string) int {
+	maskFlag := false
+	for _, a := range args {
+		switch a {
+		case "--mask":
+			maskFlag = true
+		case "-h", "--help":
+			fmt.Println("Usage: agy-pro doctor [--mask]")
+			return 0
+		default:
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("common.unknown_flag", a))
+			return 2
+		}
+	}
+	masked := maskFlag || ui.MaskEnabled()
 	agyBin := vault.FindAgyBinary()
 	okAll := true
 
@@ -944,10 +1232,11 @@ func cmdDoctor(v *vault.Vault) int {
 			okAll = false
 		}
 		mark := ui.SDim.Render("○")
-		name := e
+		shown := ui.DisplayEmail(e, masked)
+		name := shown
 		if e == st.Active {
 			mark = ui.SGoodB.Render("●")
-			name = ui.SBold.Render(e)
+			name = ui.SBold.Render(shown)
 		}
 		tokStatus := ui.SGood.Render(i18n.T("doctor.tok_ok"))
 		if !good {
@@ -1115,19 +1404,21 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		}
 		currentEmail = picked
 		if opts.forceNext && oldActive != "" && oldActive != currentEmail {
+			m := ui.MaskEnabled()
 			fmt.Fprintf(os.Stderr, "%s %s %s %s %s\n",
 				ui.Brand("agy-pro"),
 				ui.SDim.Render("·"),
-				ui.SDim.Render(oldActive),
+				ui.SDim.Render(ui.DisplayEmail(oldActive, m)),
 				ui.SAccentB.Render("→"),
-				ui.SGoodB.Render(currentEmail))
+				ui.SGoodB.Render(ui.DisplayEmail(currentEmail, m)))
 		} else if reason == "reserve-advanced" && oldActive != "" && oldActive != currentEmail {
+			m := ui.MaskEnabled()
 			fmt.Fprintf(os.Stderr, "%s %s %s %s %s\n",
 				ui.Brand("agy-pro"),
 				ui.SDim.Render("·"),
-				ui.SAmber.Render(i18n.T("run.proactive_low", oldActive, reservePct)),
+				ui.SAmber.Render(i18n.T("run.proactive_low", ui.DisplayEmail(oldActive, m), reservePct)),
 				ui.SDim.Render("→"),
-				ui.SGoodB.Render(currentEmail))
+				ui.SGoodB.Render(ui.DisplayEmail(currentEmail, m)))
 		}
 		_ = v.UpdateState(func(s *vault.State) {
 			s.Active = currentEmail
@@ -1234,7 +1525,7 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			fmt.Fprintf(os.Stderr, "%s %s %s %s %s\n",
 				ui.Brand("agy-pro"),
 				ui.SDim.Render("·"),
-				ui.SGoodB.Render("●")+" "+ui.SBold.Render(currentEmail),
+				ui.SGoodB.Render("●")+" "+ui.SBold.Render(ui.DisplayEmail(currentEmail, ui.MaskEnabled())),
 				ui.SDim.Render("·"),
 				strings.Join(qParts, ui.SDim.Render("  ")))
 		}
@@ -1415,9 +1706,9 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		fmt.Fprintf(os.Stderr, "\n%s %s %s %s %s%s\n",
 			ui.Brand("agy-pro"),
 			ui.SAmber.Render("↻"),
-			ui.SDim.Render(oldEmail+" "+kindLabel),
+			ui.SDim.Render(ui.DisplayEmail(oldEmail, ui.MaskEnabled())+" "+kindLabel),
 			ui.SAccentB.Render("→"),
-			ui.SGoodB.Render(nextEmail),
+			ui.SGoodB.Render(ui.DisplayEmail(nextEmail, ui.MaskEnabled())),
 			resumeNote)
 
 		if !printMode {
@@ -1600,9 +1891,11 @@ func runCLI(argv []string, stateDir string) int {
 	case "_warm":
 		return cmdInternalWarm(v, rest)
 	case "ui":
-		return cmdUI(v)
+		return cmdUI(v, rest)
 	case "status":
 		return cmdStatus(v, rest)
+	case "usage":
+		return cmdUsage(rest)
 	case "resume":
 		return cmdResume(v, rest)
 	case "next":
@@ -1640,7 +1933,7 @@ func runCLI(argv []string, stateDir string) int {
 	case "config":
 		return cmdConfig(v, rest)
 	case "doctor":
-		return cmdDoctor(v)
+		return cmdDoctor(v, rest)
 	}
 
 	if !strings.HasPrefix(cmd, "-") {

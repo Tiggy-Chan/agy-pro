@@ -670,3 +670,56 @@ func TestSQLiteReadOnlyDSNPortablePaths(t *testing.T) {
 		t.Fatalf("unexpected UNC SQLite DSN: %q", uncDSN)
 	}
 }
+
+func TestMaskEmailAutoImportCurrentAndUsageCLI(t *testing.T) {
+	if got := ui.MaskEmail("alice.smith@gmail.com"); got != "al***@gmail.com" {
+		t.Fatalf("unexpected MaskEmail: %q", got)
+	}
+	if got := ui.MaskEmail("ab@example.com"); got != "a***@example.com" {
+		t.Fatalf("unexpected short MaskEmail: %q", got)
+	}
+	if got := ui.MaskEmail("x@example.com"); got != "*@example.com" {
+		t.Fatalf("unexpected 1-char MaskEmail: %q", got)
+	}
+
+	tmp := t.TempDir()
+	fakeHome := filepath.Join(tmp, "home")
+	setTestHome(t, fakeHome)
+	poolDir := filepath.Join(tmp, "pool")
+
+	// Zero-arg `auth import` fails cleanly when no active file token exists yet
+	if rc := runCLI([]string{"auth", "import"}, poolDir); rc != 1 {
+		t.Fatalf("expected exit 1 when active token file is missing, got %d", rc)
+	}
+
+	// Place an active token at ~/.gemini/antigravity-cli/antigravity-oauth-token -> zero-arg `auth import` imports it!
+	activeTok := vault.ActiveTokenFile()
+	_ = os.MkdirAll(filepath.Dir(activeTok), 0o700)
+	raw, _ := json.Marshal(map[string]any{
+		"id_token_email": "active.user@gmail.com",
+		"token":          map[string]any{"access_token": "a", "refresh_token": "r", "expiry": "2030-01-01T00:00:00Z"},
+	})
+	_ = os.WriteFile(activeTok, raw, 0o600)
+
+	if rc := runCLI([]string{"auth", "import"}, poolDir); rc != 0 {
+		t.Fatalf("expected zero-arg auth import exit 0, got %d", rc)
+	}
+	v := vault.New(poolDir)
+	if _, ok := v.ListAccounts()["active.user@gmail.com"]; !ok {
+		t.Fatalf("expected active.user@gmail.com imported into pool")
+	}
+
+	// `status --mask --no-auto-init` & `usage --all --json` & `usage --help`
+	if rc := runCLI([]string{"status", "--mask", "--no-auto-init"}, poolDir); rc != 0 {
+		t.Fatalf("expected status --mask exit 0, got %d", rc)
+	}
+	if rc := runCLI([]string{"usage", "--all", "--json"}, poolDir); rc != 0 {
+		t.Fatalf("expected usage --all --json exit 0, got %d", rc)
+	}
+	if rc := runCLI([]string{"usage", "--help"}, poolDir); rc != 0 {
+		t.Fatalf("expected usage --help exit 0, got %d", rc)
+	}
+	if rc := runCLI([]string{"usage", "--bad-flag"}, poolDir); rc != 2 {
+		t.Fatalf("expected usage --bad-flag exit 2, got %d", rc)
+	}
+}

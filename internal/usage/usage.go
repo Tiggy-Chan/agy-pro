@@ -92,6 +92,32 @@ type ModelRow struct {
 	Stats BucketStats
 }
 
+// RollupModels caps a sorted model breakdown to maxRows, rolling remaining tail models
+// into a single summary row so displayed model totals always sum cleanly to Report.Total.
+func RollupModels(models []ModelRow, maxRows int, otherLabel func(count int) string) []ModelRow {
+	if maxRows < 2 || len(models) <= maxRows {
+		return models
+	}
+	keep := maxRows - 1
+	out := make([]ModelRow, 0, maxRows)
+	out = append(out, models[:keep]...)
+	var rest BucketStats
+	for _, mr := range models[keep:] {
+		rest.Calls += mr.Stats.Calls
+		rest.Input += mr.Stats.Input
+		rest.CacheRead += mr.Stats.CacheRead
+		rest.CacheWrite += mr.Stats.CacheWrite
+		rest.Output += mr.Stats.Output
+		rest.Thinking += mr.Stats.Thinking
+	}
+	label := fmt.Sprintf("other (+%d)", len(models)-keep)
+	if otherLabel != nil {
+		label = otherLabel(len(models) - keep)
+	}
+	out = append(out, ModelRow{Model: label, Stats: rest})
+	return out
+}
+
 type SessionRow struct {
 	ConvID string
 	Title  string

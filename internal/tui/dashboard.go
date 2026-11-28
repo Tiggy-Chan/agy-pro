@@ -58,6 +58,8 @@ type model struct {
 	order         []string
 	quotas        map[string]*vault.Quota
 	cursor        int
+	poolOffset    int
+	maskEmails    bool
 	tab           int
 	showAllSess   bool
 	openCount     int
@@ -92,6 +94,7 @@ func newModel(v *vault.Vault, agyBin string) model {
 		vault:         v,
 		agyBin:        agyBin,
 		homeDir:       vault.HomeDir(),
+		maskEmails:    ui.MaskEnabled(),
 		liveMeta:      map[string]vault.LiveSession{},
 		usageScanner:  usage.NewScanner("", ""),
 		usageRange:    usage.RangeToday,
@@ -110,7 +113,39 @@ func newModel(v *vault.Vault, agyBin string) model {
 			break
 		}
 	}
+	m.clampPoolOffset()
 	return m
+}
+
+func (m model) dispEmail(email string) string {
+	return ui.DisplayEmail(email, m.maskEmails)
+}
+
+func (m *model) poolPageRows() int {
+	rows := m.height - 14
+	if rows < 5 {
+		rows = 5
+	}
+	if rows > 16 {
+		rows = 16
+	}
+	return rows
+}
+
+func (m *model) clampPoolOffset() {
+	page := m.poolPageRows()
+	if m.cursor < m.poolOffset {
+		m.poolOffset = m.cursor
+	}
+	if m.cursor >= m.poolOffset+page {
+		m.poolOffset = m.cursor - page + 1
+	}
+	if maxOff := len(m.order) - page; maxOff >= 0 && m.poolOffset > maxOff {
+		m.poolOffset = maxOff
+	}
+	if m.poolOffset < 0 {
+		m.poolOffset = 0
+	}
 }
 
 func (m *model) reloadSessions() {
@@ -247,6 +282,7 @@ func (m *model) reload() {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
+	m.clampPoolOffset()
 }
 
 func (m model) Init() tea.Cmd {
@@ -283,6 +319,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.clampPoolOffset()
 		m.clampSessionOffset()
 		return m, nil
 
@@ -354,10 +391,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		rem := m.pendingRefreshCount()
 		if rem == 0 {
 			if msg.q != nil && msg.q.Error != "" {
-				m.toast = fmt.Sprintf("! %s: %s", msg.email, msg.q.Error)
+				m.toast = fmt.Sprintf("! %s: %s", m.dispEmail(msg.email), msg.q.Error)
 				m.toastStyle = ui.SAmber
 			} else if clearedCooldown {
-				m.toast = i18n.T("ui.toast.recovered", msg.email)
+				m.toast = i18n.T("ui.toast.recovered", m.dispEmail(msg.email))
 				m.toastStyle = ui.SGood
 			} else {
 				m.toast = i18n.T("ui.toast.refreshed")
@@ -380,7 +417,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmDel = ""
 				m.vault.RemoveAccount(target)
 				m.reload()
-				m.toast = i18n.T("ui.toast.removed", target)
+				m.toast = i18n.T("ui.toast.removed", m.dispEmail(target))
 				m.toastStyle = ui.SGood
 				return m, nil
 			}
@@ -393,6 +430,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			m.result = Result{Action: ActionNone}
 			return m, tea.Quit
+
+		case "m":
+			m.maskEmails = !m.maskEmails
+			if m.maskEmails {
+				m.toast = i18n.T("ui.toast.mask_on")
+			} else {
+				m.toast = i18n.T("ui.toast.mask_off")
+			}
+			m.toastStyle = ui.SGood
+			return m, nil
 
 		case "g":
 			nextLang := i18n.NextPref(m.state.Language)
@@ -525,12 +572,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if len(m.order) > 0 && m.cursor > 0 {
 				m.cursor--
+				m.clampPoolOffset()
 			}
 			return m, nil
 
 		case "down", "j":
 			if len(m.order) > 0 && m.cursor < len(m.order)-1 {
 				m.cursor++
+				m.clampPoolOffset()
 			}
 			return m, nil
 
@@ -538,6 +587,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.order) > 1 && m.cursor > 0 {
 				m.order[m.cursor], m.order[m.cursor-1] = m.order[m.cursor-1], m.order[m.cursor]
 				m.cursor--
+				m.clampPoolOffset()
 				newOrd := append([]string(nil), m.order...)
 				_ = m.vault.UpdateState(func(s *vault.State) { s.Order = newOrd })
 				m.reload()
@@ -550,6 +600,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.order) > 1 && m.cursor < len(m.order)-1 {
 				m.order[m.cursor], m.order[m.cursor+1] = m.order[m.cursor+1], m.order[m.cursor]
 				m.cursor++
+				m.clampPoolOffset()
 				newOrd := append([]string(nil), m.order...)
 				_ = m.vault.UpdateState(func(s *vault.State) { s.Order = newOrd })
 				m.reload()
@@ -582,7 +633,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					delete(s.Cooldowns, chosen)
 				})
 				m.reload()
-				m.toast = i18n.T("ui.toast.set_active", chosen)
+				m.toast = i18n.T("ui.toast.set_active", m.dispEmail(chosen))
 				m.toastStyle = ui.SGood
 			}
 			return m, nil
@@ -604,7 +655,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				e := m.order[m.cursor]
 				cmds := m.enqueueProbes([]string{e})
 				if len(cmds) > 0 {
-					m.toast = i18n.T("ui.toast.refreshing_one", e)
+					m.toast = i18n.T("ui.toast.refreshing_one", m.dispEmail(e))
 					m.toastStyle = ui.SHeadDim
 					return m, tea.Batch(cmds...)
 				}
@@ -671,7 +722,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.order) > 0 {
 				target := m.order[m.cursor]
 				m.confirmDel = target
-				m.toast = i18n.T("ui.toast.confirm_del", target)
+				m.toast = i18n.T("ui.toast.confirm_del", m.dispEmail(target))
 				m.toastStyle = ui.SAmberB
 			}
 			return m, nil
@@ -773,15 +824,40 @@ func (m model) View() string {
 	var headerLine string
 	switch m.tab {
 	case tabPool:
-		metaParts := []string{
-			ui.SDim.Render(fmt.Sprintf("reserve %.0f%%", m.state.ReservePct)),
-			ui.SDim.Render("compact " + vault.DisplayAutoCompact(m.state)),
+		rightHead := ui.SGoodB.Render(fmt.Sprintf("%d/%d ready", readyCount, len(m.order)))
+		metaParts := []string{}
+		if m.state.ReservePct > 0 {
+			metaParts = append(metaParts, ui.SDim.Render(fmt.Sprintf("reserve %.0f%%", m.state.ReservePct)))
+		}
+		metaParts = append(metaParts, ui.SDim.Render("compact "+vault.DisplayAutoCompact(m.state)))
+		if len(m.order) > m.poolPageRows() {
+			pEnd := m.poolOffset + m.poolPageRows()
+			if pEnd > len(m.order) {
+				pEnd = len(m.order)
+			}
+			metaParts = append(metaParts, ui.SDim.Render(fmt.Sprintf("%d-%d/%d", m.poolOffset+1, pEnd, len(m.order))))
+		}
+		if m.maskEmails {
+			metaParts = append(metaParts, ui.SHeadDim.Render("mask"))
 		}
 		if oldestAt > 0 {
-			metaParts = append(metaParts, ui.SDim.Render("cache "+vault.FmtAge(oldestAt, now)))
+			cand := append(append([]string(nil), metaParts...), ui.SDim.Render("cache "+vault.FmtAge(oldestAt, now)))
+			candLine := leftHead + "  " + strings.Join(cand, ui.SDim.Render(" · "))
+			if lipgloss.Width(candLine)+lipgloss.Width(rightHead)+2 <= innerW {
+				metaParts = cand
+			}
 		}
-		rightHead := ui.SGoodB.Render(fmt.Sprintf("%d/%d ready", readyCount, len(m.order)))
-		headerLine = leftHead + "  " + strings.Join(metaParts, ui.SDim.Render(" · "))
+		for len(metaParts) > 0 {
+			candLine := leftHead + "  " + strings.Join(metaParts, ui.SDim.Render(" · "))
+			if lipgloss.Width(candLine)+lipgloss.Width(rightHead)+2 <= innerW {
+				break
+			}
+			metaParts = metaParts[:len(metaParts)-1]
+		}
+		headerLine = leftHead
+		if len(metaParts) > 0 {
+			headerLine += "  " + strings.Join(metaParts, ui.SDim.Render(" · "))
+		}
 		if gap := innerW - lipgloss.Width(headerLine) - lipgloss.Width(rightHead); gap > 1 {
 			headerLine += strings.Repeat(" ", gap) + rightHead
 		} else {
@@ -835,8 +911,22 @@ func (m model) View() string {
 			barW = 5
 		}
 
+		page := m.poolPageRows()
+		start := m.poolOffset
+		if start < 0 {
+			start = 0
+		}
+		if start >= len(m.order) {
+			start = 0
+		}
+		end := start + page
+		if end > len(m.order) {
+			end = len(m.order)
+		}
+
 		var rows [][]string
-		for i, e := range m.order {
+		for i := start; i < end; i++ {
+			e := m.order[i]
 			isSel := i == m.cursor
 			isActive := e == m.state.Active
 			q := m.quotas[e]
@@ -854,14 +944,15 @@ func (m model) View() string {
 			}
 			idxCell := fmt.Sprintf("%s %s", ptr, dot)
 
-			emailCell := e
+			shownEmail := m.dispEmail(e)
+			emailCell := shownEmail
 			switch {
 			case isSel:
-				emailCell = ui.SAccentB.Render(e)
+				emailCell = ui.SAccentB.Render(shownEmail)
 			case isActive:
-				emailCell = ui.SBold.Render(e)
+				emailCell = ui.SBold.Render(shownEmail)
 			case !ok:
-				emailCell = ui.SDim.Render(e)
+				emailCell = ui.SDim.Render(shownEmail)
 			}
 
 			var g5Cell, g7Cell, claudeCell string
@@ -934,6 +1025,7 @@ func (m model) View() string {
 			ui.KeyHint("enter", i18n.T("ui.key.resume_cur")),
 			ui.KeyHint("ctrl+n", i18n.T("ui.key.resume_next")),
 			ui.KeyHint("r", i18n.T("ui.key.refresh")),
+			ui.KeyHint("m", i18n.T("ui.key.mask")),
 			ui.KeyHint("g", i18n.T("ui.key.lang")),
 			ui.KeyHint("q", i18n.T("ui.key.quit")),
 		}
@@ -949,29 +1041,48 @@ func (m model) View() string {
 			ui.KeyHint("[/]/a", i18n.T("ui.key.compact")),
 			ui.KeyHint("c", i18n.T("ui.key.clear_cd")),
 			ui.KeyHint("l/d", i18n.T("ui.key.login_rm")),
+			ui.KeyHint("m", i18n.T("ui.key.mask")),
 			ui.KeyHint("g", i18n.T("ui.key.lang")),
 			ui.KeyHint("q", i18n.T("ui.key.quit")),
 		}
 	}
-	footer := "  " + strings.Join(keys, ui.SDim.Render("  ·  "))
-	if lipgloss.Width(footer) > cardW {
-		mid := (len(keys) + 1) / 2
-		row1 := "  " + strings.Join(keys[:mid], ui.SDim.Render("  ·  "))
-		row2 := "  " + strings.Join(keys[mid:], ui.SDim.Render("  ·  "))
-		footer = row1 + "\n" + row2
+	sep := ui.SDim.Render("  ·  ")
+	sepW := lipgloss.Width(sep)
+	var footerLines []string
+	curLine := "  "
+	curW := 2
+	for _, k := range keys {
+		kw := lipgloss.Width(k)
+		if curW > 2 && curW+sepW+kw > cardW {
+			footerLines = append(footerLines, curLine)
+			curLine = "  " + k
+			curW = 2 + kw
+		} else {
+			if curW > 2 {
+				curLine += sep
+				curW += sepW
+			}
+			curLine += k
+			curW += kw
+		}
 	}
+	if curW > 2 {
+		footerLines = append(footerLines, curLine)
+	}
+	footer := strings.Join(footerLines, "\n")
 
 	return "\n" + card + "\n" + footer + "\n"
 }
 
-func shortAccountLabel(email string) string {
+func shortAccountLabel(email string, masked bool) string {
 	if email == "" {
 		return "native"
 	}
-	if local, _, ok := strings.Cut(email, "@"); ok && local != "" {
+	shown := ui.DisplayEmail(email, masked)
+	if local, _, ok := strings.Cut(shown, "@"); ok && local != "" {
 		return local
 	}
-	return email
+	return shown
 }
 
 func (m model) renderSessionsBody(innerW int) string {
@@ -1036,7 +1147,7 @@ func (m model) renderSessionsBody(innerW int) string {
 		acctCell := ui.SDim.Render("-")
 		if s.Open {
 			if hasLive {
-				acctCell = ui.SGood.Render(ui.Truncate(shortAccountLabel(live.Email), acctColW))
+				acctCell = ui.SGood.Render(ui.Truncate(shortAccountLabel(live.Email, m.maskEmails), acctColW))
 			} else {
 				acctCell = ui.SDim.Render("native")
 			}
@@ -1082,7 +1193,7 @@ func (m model) renderSessionsBody(innerW int) string {
 			metaParts = append(metaParts, i18n.T("ui.sessions.detail_tty", live.TTY))
 		}
 		if live.Email != "" {
-			metaParts = append(metaParts, i18n.T("ui.sessions.detail_acct", live.Email))
+			metaParts = append(metaParts, i18n.T("ui.sessions.detail_acct", m.dispEmail(live.Email)))
 		}
 	} else if sel.Open {
 		metaParts = append(metaParts, i18n.T("ui.sessions.detail_presence"))
@@ -1179,8 +1290,11 @@ func renderStatusBadge(isActive, ok bool, kind string, q *vault.Quota, reservePc
 }
 
 // Run launches the interactive BubbleTea dashboard and returns the chosen follow-up action.
-func Run(v *vault.Vault, agyBin string) (Result, error) {
+func Run(v *vault.Vault, agyBin string, forceMask bool) (Result, error) {
 	m := newModel(v, agyBin)
+	if forceMask {
+		m.maskEmails = true
+	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	final, err := p.Run()
 	if err != nil {

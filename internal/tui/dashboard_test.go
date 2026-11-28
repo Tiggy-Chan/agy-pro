@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -324,5 +325,65 @@ func TestDashboardUsageTabAndLanguageKey(t *testing.T) {
 	m = next.(model)
 	if cmd == nil || m.result.Action != ActionResume || m.result.ConversationID != "cccc3333-0000-4000-8000-000000000003" {
 		t.Fatalf("expected Enter in Usage tab to resume top session, got %+v", m.result)
+	}
+}
+
+func TestDashboardPrivacyMaskAndPoolPagination(t *testing.T) {
+	t.Setenv("AGY_PRO_MASK", "")
+	t.Setenv("AGY_PRO_LANG", "en")
+	i18n.SetPref("en")
+	t.Cleanup(func() { i18n.SetPref("auto") })
+
+	tmp := t.TempDir()
+	emptyHome := filepath.Join(tmp, "empty-home")
+	t.Setenv("HOME", emptyHome)
+	t.Setenv("USERPROFILE", emptyHome)
+	v := vault.New(filepath.Join(tmp, "pool"))
+
+	for i := 1; i <= 12; i++ {
+		em := fmt.Sprintf("member%02d@gmail.com", i)
+		tok := filepath.Join(tmp, em+".tok")
+		raw, _ := json.Marshal(map[string]any{
+			"id_token_email": em,
+			"token":          map[string]any{"access_token": "a", "refresh_token": "r", "expiry": "2030-01-01T00:00:00Z"},
+		})
+		_ = os.WriteFile(tok, raw, 0o600)
+		if _, err := v.ImportTokenFile(tok); err != nil {
+			t.Fatalf("import %s failed: %v", em, err)
+		}
+	}
+
+	m := newModel(v, "/usr/bin/true")
+	// Resize to compact 20-row terminal -> poolPageRows() = 6 -> 12 accounts paginate cleanly
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	m = next.(model)
+	v1 := m.View()
+	if !strings.Contains(v1, "1-6/12") || !strings.Contains(v1, "member01@gmail.com") || strings.Contains(v1, "member12@gmail.com") {
+		t.Fatalf("expected paginated 1-6/12 pool slice, got:\n%s", v1)
+	}
+
+	// Scroll down 8 times -> poolOffset advances to show member09
+	for i := 0; i < 8; i++ {
+		next, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = next.(model)
+	}
+	v2 := m.View()
+	if m.poolOffset == 0 || !strings.Contains(v2, "member09@gmail.com") {
+		t.Fatalf("expected poolOffset > 0 showing member09, offset=%d view:\n%s", m.poolOffset, v2)
+	}
+
+	// Press 'm' -> privacy mask hides all emails cleanly
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	m = next.(model)
+	vMasked := m.View()
+	if !m.maskEmails || strings.Contains(vMasked, "member09@gmail.com") || !strings.Contains(vMasked, "me***@gmail.com") {
+		t.Fatalf("expected masked emails after pressing m, got:\n%s", vMasked)
+	}
+
+	// Press 'm' again -> restores full email visibility
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	m = next.(model)
+	if m.maskEmails || !strings.Contains(m.View(), "member09@gmail.com") {
+		t.Fatalf("expected unmasked emails after second m press")
 	}
 }

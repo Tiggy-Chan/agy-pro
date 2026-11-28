@@ -334,7 +334,7 @@ func (m sessionModel) View() string {
 		if len(idShort) > 8 {
 			idShort = idShort[:8]
 		}
-		acctInfo := m.activeAccount
+		acctInfo := ui.DisplayEmail(m.activeAccount, ui.MaskEnabled())
 		if acctInfo == "" {
 			acctInfo = i18n.T("common.auto_pick")
 		}

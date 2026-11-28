@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -201,4 +202,66 @@ func Hairline(width int) string {
 // KeyHint renders a styled keycap + dim action label (e.g. `enter launch`).
 func KeyHint(key, desc string) string {
 	return SAccentB.Render(key) + " " + SDim.Render(desc)
+}
+
+// RenderShareBar renders a proportional usage share bar (e.g. `━━━━──  68%`).
+func RenderShareBar(share float64, width int) string {
+	if width < 4 {
+		width = 4
+	}
+	if share < 0 {
+		share = 0
+	}
+	if share > 100 {
+		share = 100
+	}
+	filled := int(share/100.0*float64(width) + 0.5)
+	if filled == 0 && share > 0 {
+		filled = 1
+	}
+	if filled > width {
+		filled = width
+	}
+	return SAccent.Render(strings.Repeat("━", filled)) +
+		SDim.Render(strings.Repeat("─", width-filled)) +
+		" " + SDim.Render(fmt.Sprintf("%3.0f%%", share))
+}
+
+// MaskEnabled reports whether privacy email masking is enabled via AGY_PRO_MASK=1/true.
+func MaskEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("AGY_PRO_MASK"))
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
+// MaskEmail obscures an email address for screenshots/demos (e.g. "alice@gmail.com" -> "al***@gmail.com").
+func MaskEmail(email string) string {
+	s := strings.TrimSpace(email)
+	if s == "" {
+		return ""
+	}
+	local, domain, hasAt := strings.Cut(s, "@")
+	r := []rune(local)
+	var maskedLocal string
+	switch {
+	case len(r) == 0:
+		maskedLocal = "***"
+	case len(r) == 1:
+		maskedLocal = "*"
+	case len(r) == 2:
+		maskedLocal = string(r[:1]) + "***"
+	default:
+		maskedLocal = string(r[:2]) + "***"
+	}
+	if hasAt {
+		return maskedLocal + "@" + domain
+	}
+	return maskedLocal
+}
+
+// DisplayEmail returns email masked when privacy mode is enabled, or verbatim otherwise.
+func DisplayEmail(email string, masked bool) string {
+	if !masked {
+		return email
+	}
+	return MaskEmail(email)
 }
