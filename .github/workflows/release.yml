@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify tests
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Cross-compile static binaries (6 targets)
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p dist
+          LDFLAGS="-s -w -X github.com/Tiggy-Chan/agy-pro/internal/vault.Version=${VER}"
+          targets=(
+            "linux amd64 agy-pro-linux-amd64"
+            "linux arm64 agy-pro-linux-arm64"
+            "darwin amd64 agy-pro-darwin-amd64"
+            "darwin arm64 agy-pro-darwin-arm64"
+            "windows amd64 agy-pro-windows-amd64.exe"
+            "windows arm64 agy-pro-windows-arm64.exe"
+          )
+          for entry in "${targets[@]}"; do
+            read -r goos goarch out <<< "$entry"
+            echo "Building ${out} (${goos}/${goarch})..."
+            GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -ldflags="${LDFLAGS}" -o "dist/${out}" ./cmd/agy-pro
+          done
+          (cd dist && sha256sum agy-pro-* > checksums.txt)
+          cat dist/checksums.txt
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" dist/* --clobber
+          else
+            gh release create "${TAG}" dist/* \
+              --title "agy-pro ${TAG}" \
+              --generate-notes
+          fi

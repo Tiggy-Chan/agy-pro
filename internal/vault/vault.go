@@ -21,8 +21,10 @@ import (
 	"github.com/Tiggy-Chan/agy-pro/internal/i18n"
 )
 
+// Version is the build version string, overridable via -ldflags "-X .../internal/vault.Version=...".
+var Version = "0.1.0-dev"
+
 const (
-	Version              = "0.1.0-dev"
 	DefaultAutoCompact   = "90%"
 	AutoCompactEnvKey    = "AGY_CLI_AUTO_COMPACT_OVERRIDE"
 	ForceFileTokenEnvKey = "AGY_CLI_FORCE_FILE_TOKEN_STORAGE"
