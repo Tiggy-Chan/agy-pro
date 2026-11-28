@@ -222,6 +222,18 @@ func TestParsersAndVault(t *testing.T) {
 		t.Fatalf("expected foreground switch to 0002 ignoring server stream 9999, got %q", cid2)
 	}
 
+	// Trailing non-fatal wrapper 429 line logged 3ms after `agent executor error:` must NOT clobber FatalTurnQuotaRe!
+	logPath3 := filepath.Join(tmp, "fatal_clobber.log")
+	_ = os.WriteFile(logPath3, []byte(
+		"E1128 21:06:29.302851 1444 errorreport.go:282] agent executor error: generating and executing: transport error (ResourceExhausted, HTTP 429): Resource has been exhausted (e.g. check quota).\n"+
+			"I1128 21:06:29.305706 205 server.go:3928] GetG1Credits: starting fetch\n"+
+			"E1128 21:06:29.305781 1444 errorreport.go:282] generating and executing: transport error (ResourceExhausted, HTTP 429): Resource has been exhausted (e.g. check quota).\n",
+	), 0o600)
+	_, _, _, qlFatal := runner.ScanLog(logPath3, 0)
+	if !runner.FatalTurnQuotaRe.MatchString(qlFatal) {
+		t.Fatalf("expected ScanLog to preserve FatalTurnQuotaRe line over subsequent non-fatal line, got %q", qlFatal)
+	}
+
 	tokPath := filepath.Join(tmp, "antigravity-oauth-token")
 	tokJSON, _ := json.Marshal(map[string]any{
 		"id_token_email": "alice@example.com",

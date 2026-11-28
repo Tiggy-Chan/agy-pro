@@ -209,7 +209,11 @@ func ScanLog(logPath string, offset int64) (int64, string, string, string) {
 			authEmail = strings.ToLower(strings.TrimSpace(m[1]))
 		}
 		if BackendLogQuotaRe.MatchString(line) {
-			quotaLine = line
+			// Preserve fatal turn-ending 429 lines: agy often logs a non-fatal wrapper line
+			// 3ms after `agent executor error: ...`, which must NEVER clobber FatalTurnQuotaRe!
+			if quotaLine == "" || FatalTurnQuotaRe.MatchString(line) || !FatalTurnQuotaRe.MatchString(quotaLine) {
+				quotaLine = line
+			}
 		}
 	}
 	return newOff, convID, authEmail, quotaLine
