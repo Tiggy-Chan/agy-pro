@@ -25,10 +25,14 @@ import (
 var Version = "0.1.0-dev"
 
 const (
-	DefaultAutoCompact   = "90%"
-	AutoCompactEnvKey    = "AGY_CLI_AUTO_COMPACT_OVERRIDE"
-	ForceFileTokenEnvKey = "AGY_CLI_FORCE_FILE_TOKEN_STORAGE"
-	ForceOSC8EnvKey      = "AGY_CLI_FORCE_OSC8"
+	DefaultAutoCompact       = "90%"
+	AutoCompactEnvKey        = "AGY_CLI_AUTO_COMPACT_OVERRIDE"
+	ForceFileTokenEnvKey     = "AGY_CLI_FORCE_FILE_TOKEN_STORAGE"
+	ForceOSC8EnvKey          = "AGY_CLI_FORCE_OSC8"
+	SeamlessActiveProxyEnv   = "AGY_PRO_SEAMLESS_ACTIVE_PROXY"
+	SeamlessActiveCAEnv      = "AGY_PRO_SEAMLESS_ACTIVE_CA"
+	SeamlessOrigProxyEnv     = "AGY_PRO_SEAMLESS_ORIG_HTTPS_PROXY"
+	SeamlessOrigSSLCertEnv   = "AGY_PRO_SEAMLESS_ORIG_SSL_CERT_FILE"
 )
 
 var StripEnvKeys = []string{
@@ -439,7 +443,13 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 	}
 
 	orig := os.Environ()
-	out := make([]string, 0, len(orig)+6)
+	activeSeamlessProxy := strings.TrimSpace(os.Getenv(SeamlessActiveProxyEnv))
+	activeSeamlessCA := strings.TrimSpace(os.Getenv(SeamlessActiveCAEnv))
+	origHTTPSProxy := strings.TrimSpace(os.Getenv(SeamlessOrigProxyEnv))
+	origSSLCert := strings.TrimSpace(os.Getenv(SeamlessOrigSSLCertEnv))
+	stripSeamlessEnv := activeSeamlessProxy != "" || activeSeamlessCA != ""
+
+	out := make([]string, 0, len(orig)+8)
 	hasCompactEnv := false
 	hasOSC8Env := false
 	compactKeyNorm := normEnvKey(AutoCompactEnvKey)
@@ -453,6 +463,20 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 		if _, drop := stripSet[nk]; drop {
 			continue
 		}
+		// Never leak a parent agy-pro --seamless loopback proxy into detached probes, logins, or nested sessions.
+		if stripSeamlessEnv {
+			switch {
+			case strings.EqualFold(k, SeamlessActiveProxyEnv),
+				strings.EqualFold(k, SeamlessActiveCAEnv),
+				strings.EqualFold(k, SeamlessOrigProxyEnv),
+				strings.EqualFold(k, SeamlessOrigSSLCertEnv):
+				continue
+			case (strings.EqualFold(k, "HTTPS_PROXY")) && activeSeamlessProxy != "" && strings.TrimSpace(val) == activeSeamlessProxy:
+				continue
+			case (strings.EqualFold(k, "SSL_CERT_FILE") || strings.EqualFold(k, "NODE_EXTRA_CA_CERTS")) && activeSeamlessCA != "" && strings.TrimSpace(val) == activeSeamlessCA:
+				continue
+			}
+		}
 		if nk == compactKeyNorm && strings.TrimSpace(val) != "" {
 			hasCompactEnv = true
 		}
@@ -460,6 +484,14 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 			hasOSC8Env = true
 		}
 		out = append(out, kv)
+	}
+	if stripSeamlessEnv {
+		if origHTTPSProxy != "" {
+			out = append(out, "HTTPS_PROXY="+origHTTPSProxy)
+		}
+		if origSSLCert != "" {
+			out = append(out, "SSL_CERT_FILE="+origSSLCert)
+		}
 	}
 	// Use official AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1 instead of spoofing SSH_CONNECTION
 	// so agy keeps native local terminal detection (ssh=false) while isolating tokens cleanly.

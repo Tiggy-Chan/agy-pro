@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 type fakeProvider struct {
@@ -424,5 +426,30 @@ func TestSeamlessRewritesProjectIDOn403(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || string(body) != "rewritten-project-ok" {
 		t.Fatalf("expected 403 project rewrite to succeed with 200, got status=%d body=%q", resp.StatusCode, string(body))
+	}
+}
+
+func TestCleanNativeEnvStripsParentSeamlessProxyAndRestoresOriginal(t *testing.T) {
+	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:62860")
+	t.Setenv("https_proxy", "http://127.0.0.1:62860")
+	t.Setenv("SSL_CERT_FILE", "/tmp/agy-seamless-ca-123/ca-bundle.pem")
+	t.Setenv("NODE_EXTRA_CA_CERTS", "/tmp/agy-seamless-ca-123/ca-bundle.pem")
+	t.Setenv("AGY_PRO_SEAMLESS_ACTIVE_PROXY", "http://127.0.0.1:62860")
+	t.Setenv("AGY_PRO_SEAMLESS_ACTIVE_CA", "/tmp/agy-seamless-ca-123/ca-bundle.pem")
+	t.Setenv("AGY_PRO_SEAMLESS_ORIG_HTTPS_PROXY", "http://127.0.0.1:7890")
+	t.Setenv("AGY_PRO_SEAMLESS_ORIG_SSL_CERT_FILE", "")
+
+	env := vault.CleanNativeEnv("")
+	foundProxy := ""
+	for _, kv := range env {
+		if strings.Contains(kv, "62860") || strings.Contains(kv, "agy-seamless-ca-123") || strings.HasPrefix(kv, "AGY_PRO_SEAMLESS_") {
+			t.Fatalf("parent seamless proxy leaked into CleanNativeEnv: %q", kv)
+		}
+		if strings.HasPrefix(kv, "HTTPS_PROXY=") {
+			foundProxy = strings.TrimPrefix(kv, "HTTPS_PROXY=")
+		}
+	}
+	if foundProxy != "http://127.0.0.1:7890" {
+		t.Fatalf("expected original HTTPS_PROXY restored to http://127.0.0.1:7890, got %q", foundProxy)
 	}
 }

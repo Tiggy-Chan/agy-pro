@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 // EphemeralCA holds an in-memory per-session root CA and issues cached leaf certificates
@@ -113,7 +115,11 @@ func (ca *EphemeralCA) WriteBundle(dir string) (string, error) {
 
 func readSystemCABundle() []byte {
 	candidates := []string{}
-	if envFile := strings.TrimSpace(os.Getenv("SSL_CERT_FILE")); envFile != "" {
+	activeSeamlessCA := strings.TrimSpace(os.Getenv(vault.SeamlessActiveCAEnv))
+	if origCert := strings.TrimSpace(os.Getenv(vault.SeamlessOrigSSLCertEnv)); origCert != "" {
+		candidates = append(candidates, origCert)
+	}
+	if envFile := strings.TrimSpace(os.Getenv("SSL_CERT_FILE")); envFile != "" && envFile != activeSeamlessCA {
 		candidates = append(candidates, envFile)
 	}
 	candidates = append(candidates,

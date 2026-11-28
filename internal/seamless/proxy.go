@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
 const maxBufferedRequestBody = 32 << 20 // 32 MiB cap for retryable request bodies
@@ -190,11 +192,15 @@ func (p *Proxy) ChildEnv(baseEnv []string) []string {
 		"HTTPS_PROXY": true, "https_proxy": true,
 		"HTTP_PROXY": true, "http_proxy": true,
 		"ALL_PROXY": true, "all_proxy": true,
-		"SSL_CERT_FILE":       true,
-		"NODE_EXTRA_CA_CERTS": true,
+		"SSL_CERT_FILE":              true,
+		"NODE_EXTRA_CA_CERTS":        true,
+		vault.SeamlessActiveProxyEnv: true,
+		vault.SeamlessActiveCAEnv:    true,
+		vault.SeamlessOrigProxyEnv:   true,
+		vault.SeamlessOrigSSLCertEnv: true,
 	}
-	var existingNoProxy string
-	out := make([]string, 0, len(baseEnv)+8)
+	var existingNoProxy, origHTTPSProxy, origSSLCert string
+	out := make([]string, 0, len(baseEnv)+12)
 	for _, kv := range baseEnv {
 		k, val, ok := strings.Cut(kv, "=")
 		if !ok {
@@ -203,6 +209,12 @@ func (p *Proxy) ChildEnv(baseEnv []string) []string {
 		if strings.EqualFold(k, "NO_PROXY") {
 			existingNoProxy = val
 			continue
+		}
+		if (k == "HTTPS_PROXY" || k == "https_proxy") && origHTTPSProxy == "" && strings.TrimSpace(val) != "" {
+			origHTTPSProxy = strings.TrimSpace(val)
+		}
+		if k == "SSL_CERT_FILE" && origSSLCert == "" && strings.TrimSpace(val) != "" {
+			origSSLCert = strings.TrimSpace(val)
 		}
 		if drop[k] {
 			continue
@@ -218,7 +230,15 @@ func (p *Proxy) ChildEnv(baseEnv []string) []string {
 		"no_proxy="+noProxy,
 		"SSL_CERT_FILE="+p.caBundlePath,
 		"NODE_EXTRA_CA_CERTS="+p.caBundlePath,
+		vault.SeamlessActiveProxyEnv+"="+proxyURL,
+		vault.SeamlessActiveCAEnv+"="+p.caBundlePath,
 	)
+	if origHTTPSProxy != "" {
+		out = append(out, vault.SeamlessOrigProxyEnv+"="+origHTTPSProxy)
+	}
+	if origSSLCert != "" {
+		out = append(out, vault.SeamlessOrigSSLCertEnv+"="+origSSLCert)
+	}
 	return out
 }
 
@@ -815,7 +835,12 @@ func truncStr(s string, max int) string {
 }
 
 func snapshotEnvProxy() func(*http.Request) (*url.URL, error) {
+	activeSeamless := strings.TrimSpace(os.Getenv(vault.SeamlessActiveProxyEnv))
 	httpsProxy := firstNonEmpty(os.Getenv("HTTPS_PROXY"), os.Getenv("https_proxy"))
+	if activeSeamless != "" && httpsProxy == activeSeamless {
+		// Nested invocation inside a parent seamless session: bypass parent loopback proxy
+		httpsProxy = strings.TrimSpace(os.Getenv(vault.SeamlessOrigProxyEnv))
+	}
 	httpProxy := firstNonEmpty(os.Getenv("HTTP_PROXY"), os.Getenv("http_proxy"))
 	allProxy := firstNonEmpty(os.Getenv("ALL_PROXY"), os.Getenv("all_proxy"))
 	noProxy := firstNonEmpty(os.Getenv("NO_PROXY"), os.Getenv("no_proxy"))
