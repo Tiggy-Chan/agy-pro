@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,6 +58,7 @@ type Proxy struct {
 	upstreamProxy  func(*http.Request) (*url.URL, error)
 	provider       TokenProvider
 	interceptHosts map[string]bool
+	ctrlToken      string
 
 	logMu   sync.Mutex
 	logFile *os.File
@@ -133,6 +137,14 @@ func Start(opts Options) (*Proxy, error) {
 		logF, _ = os.OpenFile(opts.LogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	}
 
+	var tokBuf [32]byte
+	if _, err := rand.Read(tokBuf[:]); err != nil {
+		_ = ln.Close()
+		_ = os.RemoveAll(caDir)
+		return nil, err
+	}
+	ctrlToken := hex.EncodeToString(tokBuf[:])
+
 	mitmLn := newChanListener(ln.Addr())
 	p := &Proxy{
 		ca:             ca,
@@ -144,6 +156,7 @@ func Start(opts Options) (*Proxy, error) {
 		upstreamProxy:  upstreamProxyFn,
 		provider:       opts.Provider,
 		interceptHosts: hosts,
+		ctrlToken:      ctrlToken,
 		logFile:        logF,
 		projectByAcc:   make(map[string]string),
 	}
@@ -177,6 +190,14 @@ func (p *Proxy) ProxyURL() string {
 	return "http://" + p.Addr()
 }
 
+func (p *Proxy) CtrlURL() string {
+	return "http://" + p.Addr()
+}
+
+func (p *Proxy) CtrlToken() string {
+	return p.ctrlToken
+}
+
 func (p *Proxy) CABundlePath() string {
 	return p.caBundlePath
 }
@@ -198,6 +219,8 @@ func (p *Proxy) ChildEnv(baseEnv []string) []string {
 		vault.SeamlessActiveCAEnv:    true,
 		vault.SeamlessOrigProxyEnv:   true,
 		vault.SeamlessOrigSSLCertEnv: true,
+		vault.CtrlURLEnvKey:          true,
+		vault.CtrlTokenEnvKey:        true,
 	}
 	var existingNoProxy, origHTTPSProxy, origSSLCert string
 	out := make([]string, 0, len(baseEnv)+12)
@@ -232,6 +255,8 @@ func (p *Proxy) ChildEnv(baseEnv []string) []string {
 		"NODE_EXTRA_CA_CERTS="+p.caBundlePath,
 		vault.SeamlessActiveProxyEnv+"="+proxyURL,
 		vault.SeamlessActiveCAEnv+"="+p.caBundlePath,
+		vault.CtrlURLEnvKey+"="+proxyURL,
+		vault.CtrlTokenEnvKey+"="+p.ctrlToken,
 	)
 	if origHTTPSProxy != "" {
 		out = append(out, vault.SeamlessOrigProxyEnv+"="+origHTTPSProxy)
@@ -336,8 +361,67 @@ func (p *Proxy) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		p.handleConnect(w, r)
 		return
 	}
+	// Authenticated local loopback control endpoints for in-session `/dash` and `/next` slash commands
+	if r.URL.Host == "" && strings.HasPrefix(r.URL.Path, "/_agy_pro/") {
+		p.handleControlAPI(w, r)
+		return
+	}
 	// Plain HTTP proxy fallback: forward directly without modification
 	p.forwardPlainHTTP(w, r)
+}
+
+func (p *Proxy) handleControlAPI(w http.ResponseWriter, r *http.Request) {
+	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if len(auth) != len(p.ctrlToken) || subtle.ConstantTimeCompare([]byte(auth), []byte(p.ctrlToken)) != 1 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"unauthorized"}`)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	switch r.URL.Path {
+	case "/_agy_pro/status":
+		email, _, err := p.provider.Current()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"email":    email,
+			"mode":     "seamless",
+			"switches": p.provider.SwitchCount(),
+		})
+	case "/_agy_pro/switch":
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = io.WriteString(w, `{"error":"method not allowed"}`)
+			return
+		}
+		var req struct {
+			Target string `json:"target"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req)
+		oldEmail, newEmail, err := p.provider.SwitchTo(req.Target)
+		if err != nil {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"old_email": oldEmail,
+				"error":     err.Error(),
+			})
+			return
+		}
+		p.logf("CTRL SWITCH %s -> %s (target=%q)", oldEmail, newEmail, req.Target)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"old_email": oldEmail,
+			"new_email": newEmail,
+			"mode":      "seamless",
+			"switches":  p.provider.SwitchCount(),
+		})
+	default:
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error":"not found"}`)
+	}
 }
 
 func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {

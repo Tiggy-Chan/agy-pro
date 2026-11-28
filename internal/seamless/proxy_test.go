@@ -2,6 +2,7 @@ package seamless
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -60,6 +61,32 @@ func (f *fakeProvider) Failover(failedEmail, reason string) (string, string, boo
 	a := f.accounts[f.idx]
 	f.switches = append(f.switches, failedEmail+"->"+a.email)
 	return a.email, a.token, true
+}
+
+func (f *fakeProvider) SwitchTo(targetKeyword string) (string, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	old := f.accounts[f.idx].email
+	if targetKeyword == "" {
+		nextIdx := (f.idx + 1) % len(f.accounts)
+		f.idx = nextIdx
+		f.switches = append(f.switches, old+"->"+f.accounts[f.idx].email)
+		return old, f.accounts[f.idx].email, nil
+	}
+	for i, a := range f.accounts {
+		if strings.Contains(a.email, targetKeyword) {
+			f.idx = i
+			f.switches = append(f.switches, old+"->"+a.email)
+			return old, a.email, nil
+		}
+	}
+	return old, "", os.ErrNotExist
+}
+
+func (f *fakeProvider) SwitchCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.switches)
 }
 
 func (f *fakeProvider) MaxAttempts() int { return len(f.accounts) }
@@ -505,5 +532,88 @@ func TestCABundleIncludesSystemRootsAndEphemeralCA(t *testing.T) {
 	// Must contain at least multiple system root CAs (Linux/macOS PEM or Windows ROOT store) + our ephemeral CA
 	if certCount < 2 {
 		t.Fatalf("expected bundle to contain system root CAs + ephemeral CA, found only %d cert(s)", certCount)
+	}
+}
+
+func TestSeamlessControlAPIAuthAndSwitch(t *testing.T) {
+	prov := &fakeProvider{
+		accounts: []struct{ email, token string }{
+			{"alice@gmail.com", "tok-alice"},
+			{"bob@gmail.com", "tok-bob"},
+		},
+	}
+	p, err := Start(Options{
+		Provider: prov,
+		TempDir:  t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer p.Close()
+
+	direct := &http.Client{Transport: &http.Transport{Proxy: nil}}
+
+	// 1. Missing or wrong Bearer token must return 401 Unauthorized
+	for _, hdr := range []string{"", "Bearer wrong-token"} {
+		req, _ := http.NewRequest(http.MethodGet, p.CtrlURL()+"/_agy_pro/status", nil)
+		if hdr != "" {
+			req.Header.Set("Authorization", hdr)
+		}
+		resp, err := direct.Do(req)
+		if err != nil {
+			t.Fatalf("status request failed: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for auth=%q, got %d", hdr, resp.StatusCode)
+		}
+	}
+
+	// 2. Wrong method on /_agy_pro/switch returns 405 Method Not Allowed
+	reqGetSw, _ := http.NewRequest(http.MethodGet, p.CtrlURL()+"/_agy_pro/switch", nil)
+	reqGetSw.Header.Set("Authorization", "Bearer "+p.CtrlToken())
+	respGetSw, err := direct.Do(reqGetSw)
+	if err != nil {
+		t.Fatalf("GET switch failed: %v", err)
+	}
+	_ = respGetSw.Body.Close()
+	if respGetSw.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for GET /_agy_pro/switch, got %d", respGetSw.StatusCode)
+	}
+
+	// 3. Valid status returns alice@gmail.com
+	reqSt, _ := http.NewRequest(http.MethodGet, p.CtrlURL()+"/_agy_pro/status", nil)
+	reqSt.Header.Set("Authorization", "Bearer "+p.CtrlToken())
+	respSt, err := direct.Do(reqSt)
+	if err != nil {
+		t.Fatalf("GET status failed: %v", err)
+	}
+	var stBody struct {
+		Email    string `json:"email"`
+		Mode     string `json:"mode"`
+		Switches int    `json:"switches"`
+	}
+	_ = json.NewDecoder(respSt.Body).Decode(&stBody)
+	_ = respSt.Body.Close()
+	if respSt.StatusCode != http.StatusOK || stBody.Email != "alice@gmail.com" || stBody.Mode != "seamless" || stBody.Switches != 0 {
+		t.Fatalf("unexpected status response: code=%d body=%+v", respSt.StatusCode, stBody)
+	}
+
+	// 4. Valid POST /_agy_pro/switch switches live provider to bob@gmail.com
+	reqSw, _ := http.NewRequest(http.MethodPost, p.CtrlURL()+"/_agy_pro/switch", strings.NewReader(`{"target":"bob"}`))
+	reqSw.Header.Set("Authorization", "Bearer "+p.CtrlToken())
+	respSw, err := direct.Do(reqSw)
+	if err != nil {
+		t.Fatalf("POST switch failed: %v", err)
+	}
+	var swBody struct {
+		OldEmail string `json:"old_email"`
+		NewEmail string `json:"new_email"`
+		Switches int    `json:"switches"`
+	}
+	_ = json.NewDecoder(respSw.Body).Decode(&swBody)
+	_ = respSw.Body.Close()
+	if respSw.StatusCode != http.StatusOK || swBody.OldEmail != "alice@gmail.com" || swBody.NewEmail != "bob@gmail.com" || swBody.Switches != 1 {
+		t.Fatalf("unexpected switch response: code=%d body=%+v", respSw.StatusCode, swBody)
 	}
 }

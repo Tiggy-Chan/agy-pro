@@ -22,6 +22,7 @@ import (
 	"github.com/Tiggy-Chan/agy-pro/internal/runner"
 	"github.com/Tiggy-Chan/agy-pro/internal/seamless"
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
+	"github.com/Tiggy-Chan/agy-pro/internal/slash"
 	"github.com/Tiggy-Chan/agy-pro/internal/tui"
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
 	"github.com/Tiggy-Chan/agy-pro/internal/usage"
@@ -1235,6 +1236,13 @@ func cmdDoctor(v *vault.Vault, args []string) int {
 	} else {
 		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.seamless"), ui.SDim.Render(i18n.T("doctor.seamless_on"))))
 	}
+	if os.Getenv("AGY_PRO_NO_PLUGIN") == "1" {
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SAmber.Render("!"), i18n.T("doctor.slash"), ui.SDim.Render(i18n.T("doctor.slash_disabled"))))
+	} else if ss := slash.CheckStatus(); ss.HookInstalled {
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.slash"), ui.SDim.Render(i18n.T("doctor.slash_ok", ss.SkillsInstalled))))
+	} else {
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SAmber.Render("!"), i18n.T("doctor.slash"), ui.SDim.Render(i18n.T("doctor.slash_pending"))))
+	}
 	envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.lang"), ui.SDim.Render(i18n.DisplayPref(st.Language))))
 
 	schemaSt := sessions.CheckSchema("")
@@ -1537,6 +1545,12 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	}
 	v.PruneLogs(20)
 
+	if !printMode && v.IsDefaultStateDir() && os.Getenv("AGY_PRO_NO_PLUGIN") != "1" {
+		if exe, err := os.Executable(); err == nil && exe != "" {
+			_ = slash.EnsurePlugin(exe)
+		}
+	}
+
 	var seamlessProxy *seamless.Proxy
 	var seamlessProvider *seamless.VaultTokenProvider
 	var liveState struct {
@@ -1559,9 +1573,11 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 				if fn != nil {
 					fn(newEmail, cid)
 				}
-				spawnDetachedSelf(v.StateDir, "_verify", oldEmail)
-				if !printMode && !st.NotifyDisabled {
-					runner.NewNotifier(true, runner.DefaultNotifyMinDuration).NotifyFailover(oldEmail, newEmail, "seamless")
+				if reason != "manual-slash-next" {
+					spawnDetachedSelf(v.StateDir, "_verify", oldEmail)
+					if !printMode && !st.NotifyDisabled {
+						runner.NewNotifier(true, runner.DefaultNotifyMinDuration).NotifyFailover(oldEmail, newEmail, "seamless")
+					}
 				}
 			},
 		)
@@ -1908,7 +1924,7 @@ func bootstrapFirstRun(v *vault.Vault, argv []string, explicitDir bool) {
 	_ = explicitDir
 	if len(argv) > 0 {
 		switch argv[0] {
-		case "-h", "--help", "help", "-V", "--version", "_verify", "_warm":
+		case "-h", "--help", "help", "-V", "--version", "_verify", "_warm", "_hook":
 			return
 		}
 		// Never mutate state on unknown/typo subcommands
@@ -2014,6 +2030,8 @@ func runCLI(argv []string, stateDir string) int {
 		return cmdInternalVerify(v, rest)
 	case "_warm":
 		return cmdInternalWarm(v, rest)
+	case "_hook":
+		return slash.HandlePreInvocation(v, vault.FindAgyBinary(), os.Stdin, os.Stdout)
 	case "ui":
 		return cmdUI(v, rest)
 	case "status":

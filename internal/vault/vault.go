@@ -33,6 +33,8 @@ const (
 	SeamlessActiveCAEnv      = "AGY_PRO_SEAMLESS_ACTIVE_CA"
 	SeamlessOrigProxyEnv     = "AGY_PRO_SEAMLESS_ORIG_HTTPS_PROXY"
 	SeamlessOrigSSLCertEnv   = "AGY_PRO_SEAMLESS_ORIG_SSL_CERT_FILE"
+	CtrlURLEnvKey            = "AGY_PRO_CTRL_URL"
+	CtrlTokenEnvKey          = "AGY_PRO_CTRL_TOKEN"
 )
 
 var StripEnvKeys = []string{
@@ -470,7 +472,9 @@ func CleanNativeEnvWithCompact(overrideHome, autoCompact string, forceCompact bo
 			case strings.EqualFold(k, SeamlessActiveProxyEnv),
 				strings.EqualFold(k, SeamlessActiveCAEnv),
 				strings.EqualFold(k, SeamlessOrigProxyEnv),
-				strings.EqualFold(k, SeamlessOrigSSLCertEnv):
+				strings.EqualFold(k, SeamlessOrigSSLCertEnv),
+				strings.EqualFold(k, CtrlURLEnvKey),
+				strings.EqualFold(k, CtrlTokenEnvKey):
 				continue
 			case (strings.EqualFold(k, "HTTPS_PROXY")) && activeSeamlessProxy != "" && strings.TrimSpace(val) == activeSeamlessProxy:
 				continue

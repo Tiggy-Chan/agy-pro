@@ -121,6 +121,22 @@ agy-pro config [reserve <0-50> | auto-compact <90%|800K|off> [--sync-shell] | no
 agy-pro doctor [--mask]                        # 运行环境隔离、上游数据库契约与号池凭据健康体检
 ```
 
+### 对话内原生斜杠命令（0 Token · 零重启）
+
+在任意 `agy-pro` 交互式对话中，可像使用原生 `/usage`、`/context` 一样直接敲入：
+
+```text
+/dash                # 内联查看号池双池额度、当前打开终端与今日 Token 消耗
+/dash -r             # 并发在线刷新全部账号最新额度
+/dash usage|7d|all   # 按模型与 Top 会话拆分的 Token 用量统计
+/dash open           # 查看本机当前打开的所有 agy 终端会话
+/dash --mask         # 隐私打码显示邮箱（适合截屏分享）
+/next                # 当前会话无感热切到下一个可用账号（立即生效，无需重启）
+/next <关键词>       # 当前会话无感热切到指定账号（支持邮箱或片段）
+```
+
+> 通过独立隔离的 Antigravity 插件（`~/.gemini/config/plugins/agy-pro/hooks.json`）与裸命令补全（`~/.gemini/config/skills/{dash,next}/`）自动注册，不修改用户已有配置或自定义 Skill。
+
 <details>
 <summary><strong>常用启动选项与环境变量速查</strong></summary>
 
@@ -134,6 +150,8 @@ agy-pro doctor [--mask]                        # 运行环境隔离、上游数�
 | `--no-seamless` / `AGY_PRO_SEAMLESS=0` | 关闭无感热切，改用纯零代理 `--resume` 切号模式 |
 | `--no-auto-switch` | 本次关闭撞 5h/7d 墙自动秒切续跑 |
 | `--mask` / `AGY_PRO_MASK=1` | 开启隐私打码模式（`al***@gmail.com`），适合录屏与截图分享 |
+| `AGY_PRO_NO_PLUGIN=1` | 跳过自动安装对话内 `/dash`、`/next` 斜杠命令插件 |
+| `AGY_PRO_HOOK_RENDER=markdown` | 为 `/dash`、`/next` 切换至 `systemMessage.metadata.user_markdown` 渲染模式 |
 | `AGY_PRO_RESUME_PROMPT` | 自定义撞 429 自动续跑时发送的提示词（默认 `continue`） |
 | `AGY_PRO_LANG` | 覆写界面语言（`en` / `zh`） |
 | `AGY_PRO_NO_TITLE=1` | 关闭 OSC 0 终端标签页实时标题同步 |

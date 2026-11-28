@@ -122,6 +122,22 @@ agy-pro config [reserve <0-50> | auto-compact <90%|800K|off> [--sync-shell] | no
 agy-pro doctor [--mask]                        # Environment isolation, upstream DB schema & pool health check
 ```
 
+### In-Session Slash Commands (0 Tokens, Zero Restart)
+
+Inside any interactive `agy-pro` conversation, type `/` commands directly alongside native `/usage` and `/context`:
+
+```text
+/dash                # Live account pool quotas, open windows & today's token summary
+/dash -r             # Concurrently refresh live quotas across all accounts
+/dash usage|7d|all   # Token breakdown by model and top sessions
+/dash open           # List all currently open agy terminal sessions
+/dash --mask         # Mask account emails for safe screenshots
+/next                # Hot-swap the live session to the next ready account immediately
+/next <keyword>      # Hot-swap the live session to a specific account (email/substring)
+```
+
+> Auto-registered via an isolated Antigravity plugin (`~/.gemini/config/plugins/agy-pro/hooks.json`) and bare skills (`~/.gemini/config/skills/{dash,next}/`) without modifying user configs or custom skills.
+
 <details>
 <summary><strong>Launch Flags &amp; Environment Variables</strong></summary>
 
@@ -135,6 +151,8 @@ agy-pro doctor [--mask]                        # Environment isolation, upstream
 | `--no-seamless` / `AGY_PRO_SEAMLESS=0` | Disable seamless mid-turn hot-swap and use zero-proxy `--resume` failover |
 | `--no-auto-switch` | Disable automatic 5h/7d failover and resume for this run |
 | `--mask` / `AGY_PRO_MASK=1` | Obscure account emails (`al***@gmail.com`) for demos and screenshots |
+| `AGY_PRO_NO_PLUGIN=1` | Skip auto-installing the in-session `/dash` & `/next` hook plugin |
+| `AGY_PRO_HOOK_RENDER=markdown` | Opt into `systemMessage.metadata.user_markdown` rendering for `/dash` & `/next` |
 | `AGY_PRO_RESUME_PROMPT` | Override the auto-resume prompt sent after 429 failover (default `continue`) |
 | `AGY_PRO_LANG` | Override UI/CLI language (`en` / `zh`) |
 | `AGY_PRO_NO_TITLE=1` | Disable OSC 0 live terminal tab title synchronization |

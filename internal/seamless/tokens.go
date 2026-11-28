@@ -2,6 +2,8 @@ package seamless
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,8 @@ type TokenProvider interface {
 	Current() (email string, accessToken string, err error)
 	Refresh(email string) (accessToken string, ok bool)
 	Failover(failedEmail string, reason string) (nextEmail string, nextToken string, ok bool)
+	SwitchTo(targetKeyword string) (oldEmail string, newEmail string, err error)
+	SwitchCount() int
 	MaxAttempts() int
 }
 
@@ -28,6 +32,7 @@ type VaultTokenProvider struct {
 
 	mu            sync.Mutex
 	currentEmail  string
+	switchCount   int
 	accounts      map[string]*vault.Account
 	order         []string
 	cachedTokens  map[string]cachedTok
@@ -114,6 +119,103 @@ func (p *VaultTokenProvider) CurrentEmail() string {
 	return p.currentEmail
 }
 
+func (p *VaultTokenProvider) SwitchCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.switchCount
+}
+
+// SwitchTo performs an explicit in-session account switch (triggered by `/next` or `/next <keyword>`).
+// When targetKeyword is empty, picks the next ready account in drain order; otherwise matches by email/substring.
+func (p *VaultTokenProvider) SwitchTo(targetKeyword string) (string, string, error) {
+	p.mu.Lock()
+	oldEmail := p.currentEmail
+	p.accounts = p.vault.ListAccounts()
+	st := p.vault.LoadState()
+	p.order = p.vault.OrderedEmails(p.accounts, st)
+	if len(p.order) == 0 {
+		p.mu.Unlock()
+		return oldEmail, "", errors.New("account pool is empty")
+	}
+
+	now := float64(time.Now().UnixNano()) / 1e9
+	quotas := quota.Effective(st, now)
+	var nextEmail string
+
+	kw := strings.ToLower(strings.TrimSpace(targetKeyword))
+	if kw == "" {
+		stCopy := *st
+		if oldEmail != "" {
+			stCopy.Active = oldEmail
+		}
+		picked, msg := router.PickDrainWithReserve(p.order, &stCopy, quotas, true, p.reservePct, now)
+		if picked == "" {
+			p.mu.Unlock()
+			return oldEmail, "", errors.New(msg)
+		}
+		if picked == oldEmail {
+			p.mu.Unlock()
+			return oldEmail, oldEmail, errors.New("no other available account in pool")
+		}
+		nextEmail = picked
+	} else {
+		var hits []string
+		for _, e := range p.order {
+			if e == kw {
+				hits = []string{e}
+				break
+			}
+			if strings.Contains(e, kw) {
+				hits = append(hits, e)
+			}
+		}
+		if len(hits) == 0 {
+			p.mu.Unlock()
+			return oldEmail, "", fmt.Errorf("no account matched %q", targetKeyword)
+		}
+		if len(hits) > 1 {
+			p.mu.Unlock()
+			return oldEmail, "", fmt.Errorf("multiple accounts matched %q: %s", targetKeyword, strings.Join(hits, ", "))
+		}
+		nextEmail = hits[0]
+	}
+
+	nextAcct := p.accounts[nextEmail]
+	if nextAcct == nil {
+		p.mu.Unlock()
+		return oldEmail, "", fmt.Errorf("account %s not found", nextEmail)
+	}
+	orderCopy := append([]string(nil), p.order...)
+	p.mu.Unlock()
+
+	// Ensure target account has a fresh OAuth access token BEFORE committing the live switch
+	if tok, err := p.ensureFreshToken(nextAcct, false); err != nil || tok == "" {
+		return oldEmail, "", fmt.Errorf("failed to obtain access token for %s: %w", nextEmail, err)
+	}
+
+	p.mu.Lock()
+	p.currentEmail = nextEmail
+	if nextEmail != oldEmail {
+		p.switchCount++
+	}
+	cb := p.onSwitch
+	p.mu.Unlock()
+
+	_ = p.vault.UpdateState(func(s *vault.State) {
+		s.Active = nextEmail
+		s.Order = orderCopy
+		if kw != "" {
+			delete(s.Cooldowns, nextEmail)
+		}
+	})
+	_ = p.vault.ActivateToken(nextAcct)
+	if cb != nil && nextEmail != oldEmail {
+		cb(oldEmail, nextEmail, "manual-slash-next")
+	}
+	p.prewarmNextStandbyAsync(nextEmail)
+	return oldEmail, nextEmail, nil
+}
+
 func (p *VaultTokenProvider) Current() (string, string, error) {
 	p.mu.Lock()
 	email := p.currentEmail
@@ -187,6 +289,7 @@ func (p *VaultTokenProvider) Failover(failedEmail, reason string) (string, strin
 	}
 
 	p.currentEmail = nextEmail
+	p.switchCount++
 	_ = p.vault.UpdateState(func(s *vault.State) {
 		s.Active = nextEmail
 		s.Order = p.order
