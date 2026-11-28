@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -27,12 +29,18 @@ func setTestHome(t *testing.T, dir string) {
 func writeMockArgDumper(t *testing.T, dir, name, outPath string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		p := filepath.Join(dir, name+".cmd")
-		script := "@echo off\r\n(\r\nfor %%A in (%*) do echo %%~A\r\n) > \"" + outPath + "\"\r\n"
-		if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
-			t.Fatalf("write mock cmd failed: %v", err)
+		// Build a real tiny .exe because cmd.exe batch scripts split '=' in %* / %1 arguments.
+		src := filepath.Join(dir, name+".go")
+		exe := filepath.Join(dir, name+".exe")
+		code := "package main\nimport (\"os\"; \"strings\")\nfunc main() { _ = os.WriteFile(" +
+			strconv.Quote(outPath) + ", []byte(strings.Join(os.Args[1:], \"\\n\")+\"\\n\"), 0o600) }\n"
+		if err := os.WriteFile(src, []byte(code), 0o600); err != nil {
+			t.Fatalf("write mock go src failed: %v", err)
 		}
-		return p
+		if out, err := exec.Command("go", "build", "-o", exe, src).CombinedOutput(); err != nil {
+			t.Fatalf("build mock exe failed: %v\n%s", err, string(out))
+		}
+		return exe
 	}
 	p := filepath.Join(dir, name)
 	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + outPath + "\"\n"
