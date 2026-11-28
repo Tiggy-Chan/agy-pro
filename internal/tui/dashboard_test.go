@@ -219,15 +219,15 @@ func TestDashboardTabSessionsMonitor(t *testing.T) {
 		"aaaa1111-0000-4000-8000-000000000001": {PID: 1234, ConvID: "aaaa1111-0000-4000-8000-000000000001", Email: "alice@example.com", TTY: "pts/4"},
 	}
 	m.sessionsList = []sessions.Session{
-		{ID: "aaaa1111-0000-4000-8000-000000000001", Title: "后台构建任务", Preview: "build", Steps: 15, ModifiedAt: now.Add(-1 * time.Minute), Workspaces: []string{"/work/app"}, Running: true, Open: true},
-		{ID: "bbbb2222-0000-4000-8000-000000000002", Title: "代码审查", Preview: "review", Steps: 5, ModifiedAt: now.Add(-20 * time.Minute), Workspaces: []string{"/work/app"}, Running: false, Open: true},
+		{ID: "aaaa1111-0000-4000-8000-000000000001", Title: "后台构建任务", Preview: "build", Steps: 15, Compacts: 3, ModifiedAt: now.Add(-1 * time.Minute), Workspaces: []string{"/work/app"}, Running: true, Open: true},
+		{ID: "bbbb2222-0000-4000-8000-000000000002", Title: "代码审查", Preview: "review", Steps: 5, Compacts: 0, ModifiedAt: now.Add(-20 * time.Minute), Workspaces: []string{"/work/app"}, Running: false, Open: true},
 	}
 
 	// Switch to Live Sessions tab via Tab (manually set tab so reloadSessions on empty HOME doesn't clear synthetic data)
 	m.tab = tabSessions
 	view := m.View()
-	if !strings.Contains(view, "后台构建任务") || !strings.Contains(view, "运行") || !strings.Contains(view, "alice") || !strings.Contains(view, "pts/4") {
-		t.Fatalf("expected live sessions view to render running session with account/TTY, got:\n%s", view)
+	if !strings.Contains(view, "后台构建任务") || !strings.Contains(view, "运行") || !strings.Contains(view, "alice") || !strings.Contains(view, "pts/4") || !strings.Contains(view, "CMP") || !strings.Contains(view, "3次") {
+		t.Fatalf("expected live sessions view to render running session with account/TTY/compacts, got:\n%s", view)
 	}
 
 	// Down + Ctrl+N resumes second session on next account

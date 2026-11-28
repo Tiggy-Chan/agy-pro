@@ -276,7 +276,7 @@ func (m sessionModel) View() string {
 		if !showWS {
 			wsColW = 0
 		}
-		metaW := 18 // steps + age + padding
+		metaW := 24 // steps + cmp + age + padding
 		titleMaxW := innerW - 6 - metaW - wsColW
 		if titleMaxW < 20 {
 			titleMaxW = 20
@@ -305,23 +305,27 @@ func (m sessionModel) View() string {
 			}
 
 			stepsCell := ui.SDim.Render(i18n.T("ui.sessions.steps", s.Steps))
+			cmpCell := ui.SDim.Render("-")
+			if s.Compacts > 0 {
+				cmpCell = ui.SAmber.Render(i18n.T("ui.sessions.compacts", s.Compacts))
+			}
 			ageCell := ui.SDim.Render(sessions.FmtRelativeTime(s.ModifiedAt, now))
 
 			if showWS {
 				wsCell := ui.SHeadDim.Render(ui.Truncate(s.PrimaryWorkspace(m.homeDir), wsColW))
-				rows = append(rows, []string{lead, title, wsCell, stepsCell, ageCell})
+				rows = append(rows, []string{lead, title, wsCell, stepsCell, cmpCell, ageCell})
 			} else {
-				rows = append(rows, []string{lead, title, stepsCell, ageCell})
+				rows = append(rows, []string{lead, title, stepsCell, cmpCell, ageCell})
 			}
 		}
 
 		if showWS {
-			headers := []string{"", "SESSION", "WORKSPACE", "STEPS", "TIME"}
-			aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight}
+			headers := []string{"", "SESSION", "WORKSPACE", "STEPS", "CMP", "TIME"}
+			aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight}
 			body.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 1))
 		} else {
-			headers := []string{"", "SESSION", "STEPS", "TIME"}
-			aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight}
+			headers := []string{"", "SESSION", "STEPS", "CMP", "TIME"}
+			aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight}
 			body.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 1))
 		}
 		body.WriteByte('\n')

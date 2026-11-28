@@ -21,6 +21,7 @@ type Session struct {
 	Title      string
 	Preview    string
 	Steps      int
+	Compacts   int
 	ModifiedAt time.Time
 	Workspaces []string
 	Running    bool
@@ -185,7 +186,11 @@ func List(dbPath string, limit int) ([]Session, error) {
 			Running:    strings.EqualFold(status, "CASCADE_RUN_STATUS_RUNNING") || strings.EqualFold(status, "CASCADE_RUN_STATUS_BUSY"),
 		})
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	PopulateCompacts(convsDirFor(dbPath), out)
+	return out, nil
 }
 
 // MatchesDir reports whether this session belongs to cwd.

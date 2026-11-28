@@ -152,5 +152,6 @@ func ListOpen(dbPath, presenceDir string) ([]Session, error) {
 		}
 		return out[i].ID < out[j].ID
 	})
+	PopulateCompacts(convsDirFor(dbPath), out)
 	return out, nil
 }

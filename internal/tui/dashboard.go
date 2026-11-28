@@ -841,7 +841,7 @@ func (m model) View() string {
 			metaParts = append(metaParts, ui.SHeadDim.Render("mask"))
 		}
 		if oldestAt > 0 {
-			cand := append(append([]string(nil), metaParts...), ui.SDim.Render("cache "+vault.FmtAge(oldestAt, now)))
+			cand := append(append([]string(nil), metaParts...), ui.SDim.Render(i18n.T("ui.hdr.quota_age", vault.FmtAge(oldestAt, now))))
 			candLine := leftHead + "  " + strings.Join(cand, ui.SDim.Render(" · "))
 			if lipgloss.Width(candLine)+lipgloss.Width(rightHead)+2 <= innerW {
 				metaParts = cand
@@ -1110,7 +1110,7 @@ func (m model) renderSessionsBody(innerW int) string {
 	if !showAcct {
 		acctColW = 0
 	}
-	titleMaxW := innerW - 26 - wsColW - acctColW
+	titleMaxW := innerW - 32 - wsColW - acctColW
 	if titleMaxW < 16 {
 		titleMaxW = 16
 	}
@@ -1154,6 +1154,10 @@ func (m model) renderSessionsBody(innerW int) string {
 		}
 
 		stepsCell := ui.SDim.Render(i18n.T("ui.sessions.steps", s.Steps))
+		cmpCell := ui.SDim.Render("-")
+		if s.Compacts > 0 {
+			cmpCell = ui.SAmber.Render(i18n.T("ui.sessions.compacts", s.Compacts))
+		}
 		ageCell := ui.SDim.Render(sessions.FmtRelativeTime(s.ModifiedAt, now))
 		row := []string{ptr, stCell, title}
 		if showAcct {
@@ -1162,7 +1166,7 @@ func (m model) renderSessionsBody(innerW int) string {
 		if showWS {
 			row = append(row, ui.SHeadDim.Render(ui.Truncate(s.PrimaryWorkspace(m.homeDir), wsColW)))
 		}
-		row = append(row, stepsCell, ageCell)
+		row = append(row, stepsCell, cmpCell, ageCell)
 		rows = append(rows, row)
 	}
 
@@ -1176,8 +1180,8 @@ func (m model) renderSessionsBody(innerW int) string {
 		headers = append(headers, "WORKSPACE")
 		aligns = append(aligns, ui.AlignLeft)
 	}
-	headers = append(headers, "STEPS", "TIME")
-	aligns = append(aligns, ui.AlignRight, ui.AlignRight)
+	headers = append(headers, "STEPS", "CMP", "TIME")
+	aligns = append(aligns, ui.AlignRight, ui.AlignRight, ui.AlignRight)
 	b.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 2))
 	b.WriteByte('\n')
 

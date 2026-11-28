@@ -487,7 +487,7 @@ func cmdStatus(v *vault.Vault, args []string) int {
 	}
 	meta = append(meta, ui.SDim.Render("compact "+vault.DisplayAutoCompact(st)))
 	if oldestAt > 0 {
-		meta = append(meta, ui.SDim.Render("cache "+vault.FmtAge(oldestAt, now)))
+		meta = append(meta, ui.SDim.Render(i18n.T("ui.hdr.quota_age", vault.FmtAge(oldestAt, now))))
 	}
 	readyText := ui.SGoodB.Render(fmt.Sprintf("%d/%d ready", readyCount, len(order)))
 	if readyCount == 0 {

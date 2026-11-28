@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -196,5 +197,67 @@ func TestListReadsTopLevelSessionsReadOnly(t *testing.T) {
 	activeList, err := ListActiveFirst(dbPath, 10)
 	if err != nil || len(activeList) != 2 || activeList[0].ID != "00000000-0000-4000-8000-000000000002" || !activeList[0].Running {
 		t.Fatalf("expected running session pinned first, got err=%v list=%+v", err, activeList)
+	}
+}
+
+func TestCountCompactsAndCacheInvalidation(t *testing.T) {
+	tmp := t.TempDir()
+	sumDB := filepath.Join(tmp, "conversation_summaries.db")
+	convsDir := filepath.Join(tmp, "conversations")
+	if err := os.MkdirAll(convsDir, 0o700); err != nil {
+		t.Fatalf("mkdir conversations failed: %v", err)
+	}
+
+	db, err := sql.Open("sqlite", sumDB)
+	if err != nil {
+		t.Fatalf("open summary db failed: %v", err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE conversation_summaries (
+			conversation_id TEXT PRIMARY KEY,
+			title TEXT, preview TEXT, step_count INTEGER,
+			last_modified_time TEXT, workspace_uris TEXT,
+			status TEXT, parent_conversation_id TEXT, nesting_depth INTEGER
+		);
+		INSERT INTO conversation_summaries VALUES
+			('11111111-0000-4000-8000-000000000001', 'Long Session', 'p', 120, '2026-11-28 22:00:00Z', '[]', 'IDLE', '', 0),
+			('22222222-0000-4000-8000-000000000002', 'Fresh Session', 'p', 8, '2026-11-28 21:00:00Z', '[]', 'IDLE', '', 0);
+	`)
+	_ = db.Close()
+	if err != nil {
+		t.Fatalf("seed summary db failed: %v", err)
+	}
+
+	conv1 := filepath.Join(convsDir, "11111111-0000-4000-8000-000000000001.db")
+	cdb, err := sql.Open("sqlite", conv1)
+	if err != nil {
+		t.Fatalf("open conv1 db failed: %v", err)
+	}
+	_, err = cdb.Exec(`
+		CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER NOT NULL, status INTEGER NOT NULL DEFAULT 3);
+		INSERT INTO steps VALUES (0, 14, 3), (1, 15, 3), (2, 132, 3), (3, 23, 3), (4, 15, 3), (5, 23, 3);
+	`)
+	_ = cdb.Close()
+	if err != nil {
+		t.Fatalf("seed conv1 db failed: %v", err)
+	}
+
+	list, err := List(sumDB, 10)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("List failed: err=%v len=%d", err, len(list))
+	}
+	if list[0].Compacts != 2 || list[1].Compacts != 0 {
+		t.Fatalf("expected compacts [2, 0], got [%d, %d]", list[0].Compacts, list[1].Compacts)
+	}
+
+	// Append a third CHECKPOINT step (simulating manual /compact) and bump mtime so cache refreshes
+	cdb2, _ := sql.Open("sqlite", conv1)
+	_, _ = cdb2.Exec(`INSERT INTO steps VALUES (6, 23, 3)`)
+	_ = cdb2.Close()
+	future := time.Now().Add(2 * time.Second)
+	_ = os.Chtimes(conv1, future, future)
+
+	if got := CountCompacts(conv1); got != 3 {
+		t.Fatalf("expected cache invalidation to observe 3 compacts, got %d", got)
 	}
 }
