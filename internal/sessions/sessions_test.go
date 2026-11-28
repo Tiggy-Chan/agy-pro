@@ -221,7 +221,9 @@ func TestCountCompactsAndCacheInvalidation(t *testing.T) {
 		);
 		INSERT INTO conversation_summaries VALUES
 			('11111111-0000-4000-8000-000000000001', 'Long Session', 'p', 120, '2026-11-28 22:00:00Z', '[]', 'IDLE', '', 0),
-			('22222222-0000-4000-8000-000000000002', 'Fresh Session', 'p', 8, '2026-11-28 21:00:00Z', '[]', 'IDLE', '', 0);
+			('22222222-0000-4000-8000-000000000002', 'Fresh Session', 'p', 8, '2026-11-28 21:00:00Z', '[]', 'IDLE', '', 0),
+			('33333333-0000-4000-8000-000000000003', 'Subagent A', 'p', 5, '2026-11-28 22:00:00Z', '[]', 'IDLE', '11111111-0000-4000-8000-000000000001', 1),
+			('44444444-0000-4000-8000-000000000004', 'Subagent B', 'p', 5, '2026-11-28 22:00:00Z', '[]', 'IDLE', '11111111-0000-4000-8000-000000000001', 1);
 	`)
 	_ = db.Close()
 	if err != nil {
@@ -235,19 +237,35 @@ func TestCountCompactsAndCacheInvalidation(t *testing.T) {
 	}
 	_, err = cdb.Exec(`
 		CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER NOT NULL, status INTEGER NOT NULL DEFAULT 3);
-		INSERT INTO steps VALUES (0, 14, 3), (1, 15, 3), (2, 132, 3), (3, 23, 3), (4, 15, 3), (5, 23, 3);
+		INSERT INTO steps VALUES (0, 14, 3), (1, 15, 3), (2, 132, 3), (3, 23, 3), (4, 14, 3), (5, 23, 3);
 	`)
 	_ = cdb.Close()
 	if err != nil {
 		t.Fatalf("seed conv1 db failed: %v", err)
 	}
 
+	// Seed transcript.jsonl for conv1 with two PLANNER_RESPONSE records (must pick the latest!)
+	tDir := filepath.Join(tmp, "brain", "11111111-0000-4000-8000-000000000001", ".system_generated", "logs")
+	_ = os.MkdirAll(tDir, 0o700)
+	tPath := filepath.Join(tDir, "transcript.jsonl")
+	_ = os.WriteFile(tPath, []byte(
+		`{"step_index":1,"type":"PLANNER_RESPONSE","model":"gemini-3.8-flash","input_tokens":10000,"cache_read_tokens":5000}`+"\n"+
+			`{"step_index":2,"type":"GENERIC","content":"tool output"}`+"\n"+
+			`{"step_index":4,"type":"PLANNER_RESPONSE","model":"gemini-4-neon-xhigh","input_tokens":7000,"cache_read_tokens":330000}`+"\n",
+	), 0o600)
+
 	list, err := List(sumDB, 10)
 	if err != nil || len(list) != 2 {
 		t.Fatalf("List failed: err=%v len=%d", err, len(list))
 	}
-	if list[0].Compacts != 2 || list[1].Compacts != 0 {
-		t.Fatalf("expected compacts [2, 0], got [%d, %d]", list[0].Compacts, list[1].Compacts)
+	if list[0].Turns != 2 || list[0].Compacts != 2 || list[0].ContextTokens != 337000 || list[0].Model != "gemini-4-neon-xhigh" || list[0].Subagents != 2 {
+		t.Fatalf("unexpected enriched metrics on conv1: %+v", list[0])
+	}
+	if list[1].Turns != 0 || list[1].Compacts != 0 || list[1].ContextTokens != 0 || list[1].Subagents != 0 {
+		t.Fatalf("unexpected metrics on conv2: %+v", list[1])
+	}
+	if FmtContextTokens(337000) != "337K" || FmtContextTokens(19615) != "19.6K" || FmtContextTokens(1050000) != "1.05M" || FmtContextTokens(0) != "-" {
+		t.Fatalf("unexpected FmtContextTokens outputs")
 	}
 
 	// Append a third CHECKPOINT step (simulating manual /compact) and bump mtime so cache refreshes

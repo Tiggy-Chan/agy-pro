@@ -219,15 +219,17 @@ func TestDashboardTabSessionsMonitor(t *testing.T) {
 		"aaaa1111-0000-4000-8000-000000000001": {PID: 1234, ConvID: "aaaa1111-0000-4000-8000-000000000001", Email: "alice@example.com", TTY: "pts/4"},
 	}
 	m.sessionsList = []sessions.Session{
-		{ID: "aaaa1111-0000-4000-8000-000000000001", Title: "后台构建任务", Preview: "build", Steps: 15, Compacts: 3, ModifiedAt: now.Add(-1 * time.Minute), Workspaces: []string{"/work/app"}, Running: true, Open: true},
-		{ID: "bbbb2222-0000-4000-8000-000000000002", Title: "代码审查", Preview: "review", Steps: 5, Compacts: 0, ModifiedAt: now.Add(-20 * time.Minute), Workspaces: []string{"/work/app"}, Running: false, Open: true},
+		{ID: "aaaa1111-0000-4000-8000-000000000001", Title: "后台构建任务", Preview: "build", Steps: 150, Turns: 18, Compacts: 3, ContextTokens: 612000, Model: "gemini-4-neon-xhigh", Subagents: 2, ModifiedAt: now.Add(-1 * time.Minute), Workspaces: []string{"/work/app"}, Running: true, Open: true},
+		{ID: "bbbb2222-0000-4000-8000-000000000002", Title: "代码审查", Preview: "review", Steps: 5, Turns: 2, Compacts: 0, ContextTokens: 18500, Model: "claude-opus-4-6", ModifiedAt: now.Add(-20 * time.Minute), Workspaces: []string{"/work/app"}, Running: false, Open: true},
 	}
 
 	// Switch to Live Sessions tab via Tab (manually set tab so reloadSessions on empty HOME doesn't clear synthetic data)
 	m.tab = tabSessions
 	view := m.View()
-	if !strings.Contains(view, "后台构建任务") || !strings.Contains(view, "运行") || !strings.Contains(view, "alice") || !strings.Contains(view, "pts/4") || !strings.Contains(view, "CMP") || !strings.Contains(view, "3次") {
-		t.Fatalf("expected live sessions view to render running session with account/TTY/compacts, got:\n%s", view)
+	for _, want := range []string{"后台构建任务", "运行", "alice", "pts/4", "CMP", "CTX", "3次", "612K", "18轮对话", "gemini-4-neon-xhigh", "2个子代理"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected live sessions view to contain %q, got:\n%s", want, view)
+		}
 	}
 
 	// Down + Ctrl+N resumes second session on next account

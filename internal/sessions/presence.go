@@ -124,6 +124,13 @@ func ListOpen(dbPath, presenceDir string) ([]Session, error) {
 					}
 				}
 			}
+			subCounts := loadSubagentCounts(db)
+			for id, s := range byID {
+				if c := subCounts[id]; c > 0 {
+					s.Subagents = c
+					byID[id] = s
+				}
+			}
 		}
 	}
 
@@ -152,6 +159,6 @@ func ListOpen(dbPath, presenceDir string) ([]Session, error) {
 		}
 		return out[i].ID < out[j].ID
 	})
-	PopulateCompacts(convsDirFor(dbPath), out)
+	PopulateMetrics(agyDirFor(dbPath), out)
 	return out, nil
 }

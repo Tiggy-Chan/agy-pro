@@ -17,15 +17,19 @@ import (
 )
 
 type Session struct {
-	ID         string
-	Title      string
-	Preview    string
-	Steps      int
-	Compacts   int
-	ModifiedAt time.Time
-	Workspaces []string
-	Running    bool
-	Open       bool
+	ID            string
+	Title         string
+	Preview       string
+	Steps         int
+	Turns         int
+	Compacts      int
+	ContextTokens int64
+	Model         string
+	Subagents     int
+	ModifiedAt    time.Time
+	Workspaces    []string
+	Running       bool
+	Open          bool
 }
 
 func DefaultDBPath() string {
@@ -189,7 +193,11 @@ func List(dbPath string, limit int) ([]Session, error) {
 	if err := rows.Err(); err != nil {
 		return out, err
 	}
-	PopulateCompacts(convsDirFor(dbPath), out)
+	subCounts := loadSubagentCounts(db)
+	for i := range out {
+		out[i].Subagents = subCounts[out[i].ID]
+	}
+	PopulateMetrics(agyDirFor(dbPath), out)
 	return out, nil
 }
 

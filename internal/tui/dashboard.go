@@ -186,12 +186,12 @@ func (m *model) reloadSessions() {
 }
 
 func (m *model) sessionPageRows() int {
-	rows := m.height - 14
+	rows := m.height - 15
 	if rows < 5 {
 		rows = 5
 	}
-	if rows > 14 {
-		rows = 14
+	if rows > 13 {
+		rows = 13
 	}
 	return rows
 }
@@ -1085,6 +1085,42 @@ func shortAccountLabel(email string, masked bool) string {
 	return shown
 }
 
+func renderContextCell(tokens int64) string {
+	if tokens <= 0 {
+		return ui.SDim.Render("-")
+	}
+	txt := sessions.FmtContextTokens(tokens)
+	switch {
+	case tokens >= 750_000:
+		return ui.SRed.Render(txt)
+	case tokens >= 500_000:
+		return ui.SAmber.Render(txt)
+	default:
+		return ui.SHeadDim.Render(txt)
+	}
+}
+
+func formatSessionStatsSummary(s sessions.Session) string {
+	var parts []string
+	if s.Turns > 0 {
+		parts = append(parts, i18n.T("ui.sessions.stat_turns", s.Turns))
+	}
+	parts = append(parts, i18n.T("ui.sessions.steps", s.Steps))
+	if s.Compacts > 0 {
+		parts = append(parts, ui.SAmber.Render(i18n.T("ui.sessions.stat_cmp", s.Compacts)))
+	}
+	if s.ContextTokens > 0 {
+		parts = append(parts, i18n.T("ui.sessions.stat_ctx", renderContextCell(s.ContextTokens)))
+	}
+	if s.Model != "" {
+		parts = append(parts, i18n.T("ui.sessions.stat_model", ui.SHeadDim.Render(s.Model)))
+	}
+	if s.Subagents > 0 {
+		parts = append(parts, ui.SAccent.Render(i18n.T("ui.sessions.stat_sub", s.Subagents)))
+	}
+	return strings.Join(parts, ui.SDim.Render(" · "))
+}
+
 func (m model) renderSessionsBody(innerW int) string {
 	if len(m.sessionsList) == 0 {
 		if !m.showAllSess {
@@ -1100,17 +1136,22 @@ func (m model) renderSessionsBody(innerW int) string {
 		end = len(m.sessionsList)
 	}
 
-	showWS := innerW >= 86
+	showWS := innerW >= 92
 	wsColW := 20
 	if !showWS {
 		wsColW = 0
 	}
-	showAcct := innerW >= 74
+	showAcct := innerW >= 78
 	acctColW := 13
 	if !showAcct {
 		acctColW = 0
 	}
-	titleMaxW := innerW - 32 - wsColW - acctColW
+	showCtx := innerW >= 68
+	ctxColW := 7
+	if !showCtx {
+		ctxColW = 0
+	}
+	titleMaxW := innerW - 32 - wsColW - acctColW - ctxColW
 	if titleMaxW < 16 {
 		titleMaxW = 16
 	}
@@ -1166,7 +1207,11 @@ func (m model) renderSessionsBody(innerW int) string {
 		if showWS {
 			row = append(row, ui.SHeadDim.Render(ui.Truncate(s.PrimaryWorkspace(m.homeDir), wsColW)))
 		}
-		row = append(row, stepsCell, cmpCell, ageCell)
+		row = append(row, stepsCell, cmpCell)
+		if showCtx {
+			row = append(row, renderContextCell(s.ContextTokens))
+		}
+		row = append(row, ageCell)
 		rows = append(rows, row)
 	}
 
@@ -1180,8 +1225,14 @@ func (m model) renderSessionsBody(innerW int) string {
 		headers = append(headers, "WORKSPACE")
 		aligns = append(aligns, ui.AlignLeft)
 	}
-	headers = append(headers, "STEPS", "CMP", "TIME")
-	aligns = append(aligns, ui.AlignRight, ui.AlignRight, ui.AlignRight)
+	headers = append(headers, "STEPS", "CMP")
+	aligns = append(aligns, ui.AlignRight, ui.AlignRight)
+	if showCtx {
+		headers = append(headers, "CTX")
+		aligns = append(aligns, ui.AlignRight)
+	}
+	headers = append(headers, "TIME")
+	aligns = append(aligns, ui.AlignRight)
 	b.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 2))
 	b.WriteByte('\n')
 
@@ -1210,12 +1261,13 @@ func (m model) renderSessionsBody(innerW int) string {
 		wsMax = 12
 	}
 	line1 := ui.SHeadDim.Render(dirLabel) + ui.SDim.Render(ui.Truncate(sel.PrimaryWorkspace(m.homeDir), wsMax)) + rightMeta
+	lineStats := ui.SHeadDim.Render(i18n.T("ui.sessions.detail_stats")) + ui.SDim.Render(formatSessionStatsSummary(sel))
 	prev := sel.Preview
 	if prev == "" {
 		prev = sel.Title
 	}
 	line2 := ui.SHeadDim.Render(i18n.T("ui.sessions.detail_preview")) + ui.SDim.Render(ui.Truncate(prev, innerW-8))
-	b.WriteString(line1 + "\n" + line2)
+	b.WriteString(line1 + "\n" + lineStats + "\n" + line2)
 	return b.String()
 }
 

@@ -76,13 +76,13 @@ func (m *sessionModel) applyFilter() {
 }
 
 func (m *sessionModel) pageRows() int {
-	// Card header + search + detail strip + footer take ~14 rows
-	rows := m.height - 14
+	// Card header + search + 3-line detail strip + footer take ~15 rows
+	rows := m.height - 15
 	if rows < 5 {
 		rows = 5
 	}
-	if rows > 16 {
-		rows = 16
+	if rows > 15 {
+		rows = 15
 	}
 	return rows
 }
@@ -271,12 +271,17 @@ func (m sessionModel) View() string {
 			end = len(m.filtered)
 		}
 
-		showWS := m.showAll && innerW >= 82
+		showWS := m.showAll && innerW >= 88
 		wsColW := 24
 		if !showWS {
 			wsColW = 0
 		}
-		metaW := 24 // steps + cmp + age + padding
+		showCtx := innerW >= 72
+		ctxColW := 7
+		if !showCtx {
+			ctxColW = 0
+		}
+		metaW := 24 + ctxColW // steps + cmp + ctx + age + padding
 		titleMaxW := innerW - 6 - metaW - wsColW
 		if titleMaxW < 20 {
 			titleMaxW = 20
@@ -311,23 +316,33 @@ func (m sessionModel) View() string {
 			}
 			ageCell := ui.SDim.Render(sessions.FmtRelativeTime(s.ModifiedAt, now))
 
+			row := []string{lead, title}
 			if showWS {
-				wsCell := ui.SHeadDim.Render(ui.Truncate(s.PrimaryWorkspace(m.homeDir), wsColW))
-				rows = append(rows, []string{lead, title, wsCell, stepsCell, cmpCell, ageCell})
-			} else {
-				rows = append(rows, []string{lead, title, stepsCell, cmpCell, ageCell})
+				row = append(row, ui.SHeadDim.Render(ui.Truncate(s.PrimaryWorkspace(m.homeDir), wsColW)))
 			}
+			row = append(row, stepsCell, cmpCell)
+			if showCtx {
+				row = append(row, renderContextCell(s.ContextTokens))
+			}
+			row = append(row, ageCell)
+			rows = append(rows, row)
 		}
 
+		headers := []string{"", "SESSION"}
+		aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft}
 		if showWS {
-			headers := []string{"", "SESSION", "WORKSPACE", "STEPS", "CMP", "TIME"}
-			aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight}
-			body.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 1))
-		} else {
-			headers := []string{"", "SESSION", "STEPS", "CMP", "TIME"}
-			aligns := []ui.Align{ui.AlignLeft, ui.AlignLeft, ui.AlignRight, ui.AlignRight, ui.AlignRight}
-			body.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 1))
+			headers = append(headers, "WORKSPACE")
+			aligns = append(aligns, ui.AlignLeft)
 		}
+		headers = append(headers, "STEPS", "CMP")
+		aligns = append(aligns, ui.AlignRight, ui.AlignRight)
+		if showCtx {
+			headers = append(headers, "CTX")
+			aligns = append(aligns, ui.AlignRight)
+		}
+		headers = append(headers, "TIME")
+		aligns = append(aligns, ui.AlignRight)
+		body.WriteString(ui.RenderTable(headers, rows, aligns, innerW, 1))
 		body.WriteByte('\n')
 
 		// Selected session detail strip
@@ -350,12 +365,13 @@ func (m sessionModel) View() string {
 			wsMax = 12
 		}
 		line1 := ui.SHeadDim.Render(dirLabel) + ui.SDim.Render(ui.Truncate(wsDisp, wsMax)) + rightMeta
+		lineStats := ui.SHeadDim.Render(i18n.T("ui.sessions.detail_stats")) + ui.SDim.Render(formatSessionStatsSummary(sel))
 		prevText := sel.Preview
 		if prevText == "" {
 			prevText = sel.Title
 		}
 		line2 := ui.SHeadDim.Render(i18n.T("picker.detail_preview")) + ui.SDim.Render(ui.Truncate(prevText, innerW-8))
-		body.WriteString(line1 + "\n" + line2)
+		body.WriteString(line1 + "\n" + lineStats + "\n" + line2)
 	}
 
 	card := ui.RenderCard(body.String(), cardW, ui.ColorRule)
