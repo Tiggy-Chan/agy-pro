@@ -79,6 +79,7 @@ type State struct {
 	ReservePct         float64              `json:"reserve_pct,omitempty"`
 	AutoCompact        string               `json:"auto_compact,omitempty"`
 	NotifyDisabled     bool                 `json:"notify_disabled,omitempty"`
+	SeamlessDisabled   bool                 `json:"seamless_disabled,omitempty"`
 	Language           string               `json:"language,omitempty"`
 	FirstRunConfigured bool                 `json:"first_run_configured,omitempty"`
 	Cooldowns          map[string]*Cooldown `json:"cooldowns"`

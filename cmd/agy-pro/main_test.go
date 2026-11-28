@@ -323,6 +323,29 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	if rc := runCLI([]string{"config", "notify", "maybe"}, dir); rc != 2 {
 		t.Fatalf("expected exit 2 on invalid config notify value, got %d", rc)
 	}
+	// `config seamless off` / `on` and default resolution
+	t.Setenv("AGY_PRO_SEAMLESS", "")
+	if rc := runCLI([]string{"config", "seamless", "off"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config seamless off, got %d", rc)
+	}
+	if !v.LoadState().SeamlessDisabled {
+		t.Fatalf("expected SeamlessDisabled=true after config seamless off")
+	}
+	if enabled, _ := resolveSeamlessMode(runOptions{}, v.LoadState()); enabled {
+		t.Fatalf("expected seamless disabled when state.SeamlessDisabled=true")
+	}
+	if rc := runCLI([]string{"config", "seamless", "on"}, dir); rc != 0 {
+		t.Fatalf("expected exit 0 on config seamless on, got %d", rc)
+	}
+	if v.LoadState().SeamlessDisabled {
+		t.Fatalf("expected SeamlessDisabled=false after config seamless on")
+	}
+	if enabled, _ := resolveSeamlessMode(runOptions{}, v.LoadState()); enabled != (runtime.GOOS != "windows") {
+		t.Fatalf("expected default seamless=%v on %s, got %v", runtime.GOOS != "windows", runtime.GOOS, enabled)
+	}
+	if rc := runCLI([]string{"config", "seamless", "maybe"}, dir); rc != 2 {
+		t.Fatalf("expected exit 2 on invalid config seamless value, got %d", rc)
+	}
 	// Default first run + `config auto-compact` without --sync-shell MUST NOT touch user dotfiles!
 	cleanHome := t.TempDir()
 	setTestHome(t, cleanHome)

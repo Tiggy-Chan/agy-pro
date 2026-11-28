@@ -70,7 +70,7 @@ func renderHelp() string {
 	b.WriteString(cmdLine("--reserve <0-50>", i18n.T("help.opt.reserve")))
 	b.WriteString(cmdLine("--auto-compact <val>", i18n.T("help.opt.auto_compact")))
 	b.WriteString(cmdLine("--refresh", i18n.T("help.opt.refresh")))
-	b.WriteString(cmdLine("--seamless", i18n.T("help.opt.seamless")))
+	b.WriteString(cmdLine("--no-seamless", i18n.T("help.opt.no_seamless")))
 	b.WriteString(cmdLine("--no-auto-switch", i18n.T("help.opt.no_auto_switch")))
 	b.WriteString(cmdLine("-- <agy flags...>", i18n.T("help.opt.passthrough")))
 	b.WriteString("\n")
@@ -887,6 +887,16 @@ func cmdConfig(v *vault.Vault, args []string) int {
 			ui.SHeadDim.Render("notify"),
 			ui.SBold.Render(notifyDisp),
 			ui.SDim.Render(i18n.T("config.desc.notify")))
+		seamlessDisp := "on"
+		if st.SeamlessDisabled {
+			seamlessDisp = "off"
+		} else if runtime.GOOS == "windows" {
+			seamlessDisp = "auto (direct)"
+		}
+		fmt.Printf("%s      %s  %s\n",
+			ui.SHeadDim.Render("seamless"),
+			ui.SBold.Render(seamlessDisp),
+			ui.SDim.Render(i18n.T("config.desc.seamless")))
 		fmt.Printf("%s          %s  %s\n",
 			ui.SHeadDim.Render("lang"),
 			ui.SBold.Render(i18n.DisplayPref(st.Language)),
@@ -955,6 +965,28 @@ func cmdConfig(v *vault.Vault, args []string) int {
 			fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.notify_off"))
 		} else {
 			fmt.Printf("%s %s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.notify_on"), ui.SDim.Render(i18n.T("config.ok.notify_on_hint")))
+		}
+		return 0
+	}
+	if args[0] == "seamless" && len(args) == 2 {
+		low := strings.ToLower(strings.TrimSpace(args[1]))
+		var disabled bool
+		switch low {
+		case "on", "true", "1":
+			disabled = false
+		case "off", "false", "0":
+			disabled = true
+		default:
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SRedB.Render(i18n.T("common.error_prefix")), i18n.T("config.err.seamless"))
+			return 2
+		}
+		_ = v.UpdateState(func(s *vault.State) {
+			s.SeamlessDisabled = disabled
+		})
+		if disabled {
+			fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.seamless_off"))
+		} else {
+			fmt.Printf("%s %s\n", ui.SGoodB.Render("✓"), i18n.T("config.ok.seamless_on"))
 		}
 		return 0
 	}
@@ -1200,6 +1232,13 @@ func cmdDoctor(v *vault.Vault, args []string) int {
 	} else {
 		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.compact"), ui.SDim.Render(i18n.T("doctor.compact_off"))))
 	}
+	if runtime.GOOS == "windows" {
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.seamless"), ui.SDim.Render(i18n.T("doctor.seamless_win"))))
+	} else if st.SeamlessDisabled {
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.seamless"), ui.SDim.Render(i18n.T("doctor.seamless_off"))))
+	} else {
+		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.seamless"), ui.SDim.Render(i18n.T("doctor.seamless_on"))))
+	}
 	envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.lang"), ui.SDim.Render(i18n.DisplayPref(st.Language))))
 
 	schemaSt := sessions.CheckSchema("")
@@ -1279,26 +1318,42 @@ func cmdDoctor(v *vault.Vault, args []string) int {
 }
 
 type runOptions struct {
-	explicitAccount string
-	title           string
-	autoSwitch      bool
-	seamless        bool
-	refreshBefore   bool
-	forceNext       bool
-	resumeLast      bool
-	hasReserve      bool
-	reservePct      float64
-	autoCompact     string
-	flagErr         string
+	explicitAccount     string
+	title               string
+	autoSwitch          bool
+	hasSeamlessOverride bool
+	seamless            bool
+	refreshBefore       bool
+	forceNext           bool
+	resumeLast          bool
+	hasReserve          bool
+	reservePct          float64
+	autoCompact         string
+	flagErr             string
 }
 
-func seamlessEnvEnabled() bool {
-	v := strings.TrimSpace(os.Getenv("AGY_PRO_SEAMLESS"))
-	return v == "1" || strings.EqualFold(v, "true")
+func resolveSeamlessMode(opts runOptions, st *vault.State) (enabled bool, explicitRequest bool) {
+	if opts.hasSeamlessOverride {
+		return opts.seamless, opts.seamless
+	}
+	if raw, ok := os.LookupEnv("AGY_PRO_SEAMLESS"); ok && strings.TrimSpace(raw) != "" {
+		v := strings.TrimSpace(raw)
+		if v == "0" || strings.EqualFold(v, "false") || strings.EqualFold(v, "off") {
+			return false, false
+		}
+		if v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "on") {
+			return true, true
+		}
+	}
+	if st != nil && st.SeamlessDisabled {
+		return false, false
+	}
+	// Enabled by default on Linux/macOS; Windows cleanly uses zero-proxy --resume failover.
+	return runtime.GOOS != "windows", false
 }
 
 func parseRunFlags(argv []string) (runOptions, []string) {
-	opts := runOptions{autoSwitch: true, seamless: seamlessEnvEnabled()}
+	opts := runOptions{autoSwitch: true}
 	var pass []string
 	for i := 0; i < len(argv); i++ {
 		a := argv[i]
@@ -1351,8 +1406,10 @@ func parseRunFlags(argv []string) (runOptions, []string) {
 		case a == "--no-auto-switch":
 			opts.autoSwitch = false
 		case a == "--seamless":
+			opts.hasSeamlessOverride = true
 			opts.seamless = true
 		case a == "--no-seamless":
+			opts.hasSeamlessOverride = true
 			opts.seamless = false
 		case a == "--refresh":
 			opts.refreshBefore = true
@@ -1494,9 +1551,12 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		writeFn  func(email, cid string)
 	}
 	liveState.curEmail = currentEmail
-	if opts.seamless {
+	useSeamless, explicitSeamless := resolveSeamlessMode(opts, st)
+	if useSeamless {
 		if runtime.GOOS == "windows" {
-			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("run.seamless_windows_unsupported"))
+			if explicitSeamless {
+				fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("run.seamless_windows_unsupported"))
+			}
 		} else {
 			seamlessLog := filepath.Join(v.LogsDir, fmt.Sprintf("seamless-%d.log", os.Getpid()))
 			seamlessProvider = seamless.NewVaultTokenProvider(

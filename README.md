@@ -5,13 +5,13 @@
 <h1 align="center">agy-pro</h1>
 
 <p align="center">
-  <strong>Zero-gateway multi-account pool, auto-failover &amp; live session monitor for Antigravity CLI (<code>agy</code>).</strong>
+  <strong>Zero-interruption multi-account pool, seamless 429 hot-swap &amp; live session monitor for Antigravity CLI (<code>agy</code>).</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square" alt="Go 1.26+" />
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-1F2328?style=flat-square" alt="Linux, macOS and Windows" />
-  <img src="https://img.shields.io/badge/Architecture-Zero%20Proxy%20%7C%20Zero%20PTY-2E7D32?style=flat-square" alt="Zero Proxy Zero PTY" />
+  <img src="https://img.shields.io/badge/Failover-Seamless%20Hot--Swap%20%7C%20Zero%20PTY-2E7D32?style=flat-square" alt="Seamless Hot-Swap Zero PTY" />
   <img src="https://img.shields.io/badge/i18n-EN%20%7C%20%E4%B8%AD%E6%96%87-5B6678?style=flat-square" alt="English and Chinese" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Non--Commercial-3A6FE0?style=flat-square" alt="License Non-Commercial" /></a>
 </p>
@@ -24,19 +24,19 @@
   <img src="docs/assets/demo.svg" width="880" alt="agy-pro interactive TUI dashboard cycling Pool, Open Sessions, and Token Usage views" />
 </p>
 
-**agy-pro** is a pure-Go, single-binary, zero-intrusion native wrapper for Google's Antigravity CLI (`agy`). It invokes your locally installed `agy` binary directly on the real TTY — no API proxy gateway, no second-layer PTY wrapper, no forced model overrides, and zero dotfiles mutations by default.
+**agy-pro** is a pure-Go, single-binary, native multi-account wrapper for Google's Antigravity CLI (`agy`). It hands the real TTY directly to your locally installed `agy` binary — zero second-layer PTY wrapper, zero forced model overrides, zero OS trust-store or dotfiles mutations — and silently hot-swaps exhausted accounts mid-turn without interrupting running tasks.
 
 ---
 
 ## Key Features
 
 - **Single Static Binary (Zero CGO)**: Prebuilt binaries for Linux, macOS, and Windows (`amd64` / `arm64`, PowerShell, CMD, and Windows Terminal) with one-line SHA-256 verified installers. Local commands (`status`, `usage`, `use`, `next`) finish in `< 5ms` with ~4 MB RSS.
-- **Zero-Proxy Native Execution**: Isolated account vault under `~/.local/state/agy-pro/` (`%LOCALAPPDATA%\agy-pro\` on Windows) using official `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` (no system Keychain writes, no `SSH_CONNECTION` spoofing). Auto-detects official `agy` (including `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows) and supports zero-arg `agy-pro auth import` to onboard your existing active login immediately.
-- **Concurrent Official Quota Probing + ~1.5s Auto-Failover**:
-  - Strict **drain** rotation (exhausts one account's 5h/7d pool before advancing; never bounces back).
+- **Isolated Account Vault**: Stored under `~/.local/state/agy-pro/` (`%LOCALAPPDATA%\agy-pro\` on Windows) using official `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` (no system Keychain writes, no `SSH_CONNECTION` spoofing). Auto-detects official `agy` (including `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows) and supports zero-arg `agy-pro auth import` to onboard your existing active login immediately.
+- **Seamless Zero-Interruption 429 Hot-Swap (Default on Linux/macOS) + `--resume` Safety Net**:
+  - Strict **drain** rotation (exhausts one account's 5h/7d pool before advancing; never bounces back) with configurable proactive reserve switching (`agy-pro config reserve 10` or `--reserve 10`).
+  - **In-place mid-turn failover (default on Linux/macOS)**: starts a child-scoped loopback HTTP/2 proxy with an ephemeral in-memory ECDSA CA (`SSL_CERT_FILE` deleted on exit; never modifies OS Keychain/trust store). Intercepts **only** Google AI inference endpoints (all other domains pass through raw TCP untouched), pre-warms the next standby token in the background, and on `HTTP 429` / `RESOURCE_EXHAUSTED` transparently swaps the `Authorization: Bearer` token in milliseconds and replays the request — **zero process restart, zero TUI flicker, zero interrupted subagents or background tasks**.
+  - **Automatic `--resume` fallback**: Windows (by default) and Linux/macOS with `--no-seamless` / `agy-pro config seamless off` run completely proxy-free and auto-resume via `agy --resume <id>` (`continue`), while a detached background verifier records exact 5h/7d reset timestamps and self-heals transient 429s.
   - Queries Gemini + Claude/GPT 5h/7d pools concurrently across all accounts via detached official `agy --print /usage` (100% upstream parity + automatic silent OAuth token renewal).
-  - On fatal backend `HTTP 429` exhaustion, immediately switches to the next ready account and resumes with `--resume <id>`, while a detached background verifier records exact reset timestamps and self-heals transient 429s.
-  - Configurable low-quota proactive switching (`agy-pro config reserve 10` or `--reserve 10`).
 - **3-in-1 Interactive Dashboard (`agy-pro ui`) & Standalone `agy-pro usage`**:
   - **Pool (`1`)**: Live dual-pool quota bars with vertical pagination for large pools, drain priority reordering (`J`/`K`), reserve & Auto-compact tuning (`+/-`, `[/]/a`), login/remove (`l`/`d`), privacy email masking (`m`), and instant language toggle (`g`).
   - **Open Sessions (`2`)**: Detects truly open `agy` terminals on this machine in `< 0.5ms` via non-blocking kernel locks (`flock` on Unix / `LockFileEx` on Windows) over `~/.gemini/antigravity-cli/presence/*.lock` (covers both `agy-pro` and bare `agy`, plus live account & TTY display). Press `a` to toggle open-only vs. full history (hiding empty 0-step shells while keeping open windows pinned on top).
@@ -118,7 +118,7 @@ agy-pro resume [ID] [native agy flags...]      # Interactive session picker (CWD
 agy-pro next [native agy flags...]             # Switch to next ready account (launches agy immediately if flags given)
 agy-pro use <keyword> [native agy flags...]    # Switch active account (launches agy immediately if flags given)
 agy-pro auth <login | import [path] | rm <id>> # Credential management (login, import current/file/dir, remove)
-agy-pro config [reserve <0-50> | auto-compact <90%|800K|off> [--sync-shell] | notify <on|off> | lang <auto|en|zh>]
+agy-pro config [reserve <0-50> | auto-compact <90%|800K|off> [--sync-shell] | notify <on|off> | seamless <on|off> | lang <auto|en|zh>]
 agy-pro doctor [--mask]                        # Environment isolation, upstream DB schema & pool health check
 ```
 
@@ -132,6 +132,7 @@ agy-pro doctor [--mask]                        # Environment isolation, upstream
 | `--reserve <0-50>` | Override proactive low-quota switch threshold for this run |
 | `--auto-compact <val>` | Override Auto-compact threshold for this run (`90%`, `800K`, `700000`, `off`) |
 | `--refresh` | Refresh active account quota before launching |
+| `--no-seamless` / `AGY_PRO_SEAMLESS=0` | Disable seamless mid-turn hot-swap and use zero-proxy `--resume` failover |
 | `--no-auto-switch` | Disable automatic 5h/7d failover and resume for this run |
 | `--mask` / `AGY_PRO_MASK=1` | Obscure account emails (`al***@gmail.com`) for demos and screenshots |
 | `AGY_PRO_RESUME_PROMPT` | Override the auto-resume prompt sent after 429 failover (default `continue`) |

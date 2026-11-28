@@ -62,9 +62,6 @@ type Proxy struct {
 	projMu       sync.Mutex
 	projectByAcc map[string]string
 
-	sim429Once sync.Once
-	sim429On   bool
-
 	closeOnce sync.Once
 }
 
@@ -149,7 +146,6 @@ func Start(opts Options) (*Proxy, error) {
 		interceptHosts: hosts,
 		logFile:        logF,
 		projectByAcc:   make(map[string]string),
-		sim429On:       os.Getenv("AGY_PRO_SEAMLESS_SIMULATE_429_ONCE") == "1",
 	}
 
 	httpErrLog := log.New(&proxyLogWriter{p: p}, "[http] ", log.Ltime|log.Lmicroseconds)
@@ -529,19 +525,6 @@ func (p *Proxy) handleInterceptedHTTP(w http.ResponseWriter, r *http.Request) {
 			// Fall back to forwarding client's original Authorization header if provider has no token
 			p.forwardOnce(w, r, bodyBytes, true, "")
 			return
-		}
-
-		// Optional test hook: simulate a 429 on the first streamGenerateContent call to verify live failover.
-		if p.sim429On && attempt == 0 && strings.Contains(r.URL.Path, "streamGenerateContent") {
-			triggered := false
-			p.sim429Once.Do(func() { triggered = true })
-			if triggered {
-				if nextEmail, _, switched := p.provider.Failover(email, "simulated-429"); switched {
-					p.logf("SEAMLESS SWITCH (simulated 429) %s -> %s on %s (content-type=%q content-encoding=%q bodyLen=%d)",
-						email, nextEmail, r.URL.Path, r.Header.Get("Content-Type"), r.Header.Get("Content-Encoding"), len(bodyBytes))
-					continue
-				}
-			}
 		}
 
 		resp, br, err := p.sendUpstream(r, bodyBytes, true, token)
