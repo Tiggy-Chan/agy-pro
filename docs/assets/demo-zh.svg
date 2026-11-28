@@ -1,0 +1,483 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 890 527" width="890" height="527" role="img" aria-label="agy-pro interactive terminal dashboard demo">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F141D"/>
+      <stop offset="100%" stop-color="#131926"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1A2232"/>
+      <stop offset="100%" stop-color="#161D2B"/>
+    </linearGradient>
+    <linearGradient id="accentLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.75"/>
+      <stop offset="50%" stop-color="#818CF8" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#C084FC" stop-opacity="0.75"/>
+    </linearGradient>
+    <style>
+      .term {
+        font-family: "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Monaco, Consolas, "PingFang SC", "Noto Sans Mono CJK SC", monospace;
+        font-size: 12.8px;
+      }
+      .title {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", sans-serif;
+        font-size: 12.5px;
+        font-weight: 500;
+      }
+      .f1 { animation: show1 12s infinite; }
+      .f2 { animation: show2 12s infinite; }
+      .f3 { animation: show3 12s infinite; }
+      @keyframes show1 { 0%, 31% { opacity: 1; } 33.3%, 98% { opacity: 0; } 100% { opacity: 1; } }
+      @keyframes show2 { 0%, 31% { opacity: 0; } 33.3%, 64.5% { opacity: 1; } 66.6%, 100% { opacity: 0; } }
+      @keyframes show3 { 0%, 64.5% { opacity: 0; } 66.6%, 98% { opacity: 1; } 100% { opacity: 0; } }
+      .dot1 { animation: d1 12s infinite; }
+      .dot2 { animation: d2 12s infinite; }
+      .dot3 { animation: d3 12s infinite; }
+      @keyframes d1 { 0%, 32% { fill: #38BDF8; } 33.3%, 100% { fill: #334155; } }
+      @keyframes d2 { 0%, 32% { fill: #334155; } 33.3%, 65.5% { fill: #818CF8; } 66.6%, 100% { fill: #334155; } }
+      @keyframes d3 { 0%, 65.5% { fill: #334155; } 66.6%, 100% { fill: #C084FC; } }
+    
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="888" height="525" rx="12" fill="url(#bgGrad)" stroke="#263145" stroke-width="1.5"/>
+  <path d="M 13 1 H 877 A 12 12 0 0 1 889 13 V 44 H 1 V 13 A 12 12 0 0 1 13 1 Z" fill="url(#barGrad)"/>
+  <line x1="1" y1="44" x2="889" y2="44" stroke="url(#accentLine)" stroke-width="1"/>
+
+  <circle cx="22" cy="22" r="6" fill="#FF5F56"/>
+  <circle cx="42" cy="22" r="6" fill="#FFBD2E"/>
+  <circle cx="62" cy="22" r="6" fill="#27C93F"/>
+
+  <text x="445.0" y="26.5" text-anchor="middle" class="title" fill="#94A3B8">✦ agy-pro · 三合一交互终端面板</text>
+
+  <circle cx="834" cy="22" r="3.5" class="dot1" fill="#334155"/>
+  <circle cx="848" cy="22" r="3.5" class="dot2" fill="#334155"/>
+  <circle cx="862" cy="22" r="3.5" class="dot3" fill="#334155"/>
+
+  <g id="tab1" class="f1">
+    <text x="24.0" y="72.0" class="term" fill="#64748B">~</text><text x="40.4" y="72.0" class="term" fill="#38BDF8" font-weight="700">❯</text><text x="56.8" y="72.0" class="term" fill="#E2E8F0">agy-pro ui --mask</text>
+    <path d="M 28.1 103.7 V 98.2 Q 28.1 94.2 32.2 94.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <line x1="32.2" y1="94.2" x2="852.2" y2="94.2" stroke="#585858" stroke-width="1.2"/>
+    <path d="M 852.2 94.2 Q 856.3 94.2 856.3 98.2 V 103.7" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <rect x="178.8" y="104.7" width="51.2" height="17.0" rx="4" fill="#87D787"/>
+    <line x1="28.1" y1="103.7" x2="28.1" y2="122.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="103.7" x2="856.3" y2="122.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="118.5" class="term" xml:space="preserve" fill="#38BDF8" font-weight="700">a</text>
+    <text x="56.8" y="118.5" class="term" xml:space="preserve" fill="#53ADF9" font-weight="700">g</text>
+    <text x="65.0" y="118.5" class="term" xml:space="preserve" fill="#6B9DF9" font-weight="700">y</text>
+    <text x="73.2" y="118.5" class="term" xml:space="preserve" fill="#818CF8" font-weight="700">-</text>
+    <text x="81.4" y="118.5" class="term" xml:space="preserve" fill="#9A8BF9" font-weight="700">p</text>
+    <text x="89.6" y="118.5" class="term" xml:space="preserve" fill="#AF89FB" font-weight="700">r</text>
+    <text x="97.8" y="118.5" class="term" xml:space="preserve" fill="#C083FC" font-weight="700">o</text>
+    <text x="114.2" y="118.5" class="term" xml:space="preserve" fill="#808080">v0.1.0</text>
+    <text x="188.0" y="118.5" class="term" xml:space="preserve" fill="#000000" font-weight="700">号池</text>
+    <text x="237.2" y="118.5" class="term" xml:space="preserve" fill="#808080">当前打开 3</text>
+    <text x="327.4" y="118.5" class="term" xml:space="preserve" fill="#808080">用量统计</text>
+    <text x="409.4" y="118.5" class="term" xml:space="preserve" fill="#808080">reserve 10% · compact 90% ·</text>
+    <text x="639.0" y="118.5" class="term" xml:space="preserve" fill="#00D7FF">mask</text>
+    <text x="762.0" y="118.5" class="term" xml:space="preserve" fill="#87D787" font-weight="700">2/4 ready</text>
+    <line x1="28.1" y1="122.7" x2="28.1" y2="141.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="132.2" x2="835.8" y2="132.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="122.7" x2="856.3" y2="141.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="141.7" x2="28.1" y2="160.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="141.7" x2="856.3" y2="160.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="89.6" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">ACCOUNT</text>
+    <text x="229.0" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">GEMINI 5H</text>
+    <text x="352.0" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">GEMINI 7D</text>
+    <text x="483.2" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">CLAUDE</text>
+    <text x="548.8" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">STATUS</text>
+    <line x1="28.1" y1="160.7" x2="28.1" y2="179.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="170.2" x2="835.8" y2="170.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="160.7" x2="856.3" y2="179.7" stroke="#585858" stroke-width="1.2"/>
+    <rect x="547.8" y="180.7" width="67.6" height="17.0" rx="4" fill="#87D787"/>
+    <line x1="28.1" y1="179.7" x2="28.1" y2="198.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="230.0" y1="189.2" x2="252.6" y2="189.2" stroke="#87D787" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="253.6" y1="189.2" x2="294.6" y2="189.2" stroke="#444444" stroke-width="1.2"/>
+    <line x1="353.0" y1="189.2" x2="367.4" y2="189.2" stroke="#87D787" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="368.4" y1="189.2" x2="417.6" y2="189.2" stroke="#444444" stroke-width="1.2"/>
+    <line x1="856.3" y1="179.7" x2="856.3" y2="198.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="194.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">❯</text>
+    <text x="65.0" y="194.6" class="term" xml:space="preserve" fill="#87D787" font-weight="700">●</text>
+    <text x="89.6" y="194.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">al***@gmail.com</text>
+    <text x="311.0" y="194.6" class="term" xml:space="preserve" fill="#87D787">34%</text>
+    <text x="434.0" y="194.6" class="term" xml:space="preserve" fill="#87D787">28%</text>
+    <text x="475.0" y="194.6" class="term" xml:space="preserve" fill="#87D787">12%</text>
+    <text x="499.6" y="194.6" class="term" xml:space="preserve" fill="#808080">/</text>
+    <text x="507.8" y="194.6" class="term" xml:space="preserve" fill="#87D787">18%</text>
+    <text x="557.0" y="194.6" class="term" xml:space="preserve" fill="#000000" font-weight="700">ACTIVE</text>
+    <line x1="28.1" y1="198.7" x2="28.1" y2="217.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="229.0" y1="208.2" x2="294.6" y2="208.2" stroke="#444444" stroke-width="1.2"/>
+    <line x1="353.0" y1="208.2" x2="359.2" y2="208.2" stroke="#87D787" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="360.2" y1="208.2" x2="417.6" y2="208.2" stroke="#444444" stroke-width="1.2"/>
+    <line x1="856.3" y1="198.7" x2="856.3" y2="217.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="65.0" y="213.6" class="term" xml:space="preserve" fill="#808080">○</text>
+    <text x="89.6" y="213.6" class="term" xml:space="preserve" fill="#E2E8F0">bo***@gmail.com</text>
+    <text x="319.2" y="213.6" class="term" xml:space="preserve" fill="#87D787">0%</text>
+    <text x="442.2" y="213.6" class="term" xml:space="preserve" fill="#87D787">8%</text>
+    <text x="491.4" y="213.6" class="term" xml:space="preserve" fill="#87D787">0%</text>
+    <text x="507.8" y="213.6" class="term" xml:space="preserve" fill="#808080">/</text>
+    <text x="516.0" y="213.6" class="term" xml:space="preserve" fill="#87D787">0%</text>
+    <text x="557.0" y="213.6" class="term" xml:space="preserve" fill="#87D787">READY</text>
+    <rect x="547.8" y="218.7" width="75.8" height="17.0" rx="4" fill="#FF5F5F"/>
+    <line x1="28.1" y1="217.7" x2="28.1" y2="236.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="230.0" y1="227.2" x2="269.0" y2="227.2" stroke="#D7AF5F" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="270.0" y1="227.2" x2="294.6" y2="227.2" stroke="#444444" stroke-width="1.2"/>
+    <line x1="353.0" y1="227.2" x2="416.6" y2="227.2" stroke="#FF5F5F" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="856.3" y1="217.7" x2="856.3" y2="236.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="65.0" y="232.6" class="term" xml:space="preserve" fill="#808080">○</text>
+    <text x="89.6" y="232.6" class="term" xml:space="preserve" fill="#808080">ca***@gmail.com</text>
+    <text x="311.0" y="232.6" class="term" xml:space="preserve" fill="#D7AF5F">68%</text>
+    <text x="425.8" y="232.6" class="term" xml:space="preserve" fill="#FF5F5F" font-weight="700">100%</text>
+    <text x="475.0" y="232.6" class="term" xml:space="preserve" fill="#87D787">40%</text>
+    <text x="499.6" y="232.6" class="term" xml:space="preserve" fill="#808080">/</text>
+    <text x="507.8" y="232.6" class="term" xml:space="preserve" fill="#D7AF5F">85%</text>
+    <text x="557.0" y="232.6" class="term" xml:space="preserve" fill="#F8FAFC" font-weight="700">7D FULL</text>
+    <rect x="547.8" y="237.7" width="75.8" height="17.0" rx="4" fill="#FF5F5F"/>
+    <line x1="28.1" y1="236.7" x2="28.1" y2="255.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="230.0" y1="246.2" x2="293.6" y2="246.2" stroke="#FF5F5F" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="353.0" y1="246.2" x2="383.8" y2="246.2" stroke="#87D787" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="384.8" y1="246.2" x2="417.6" y2="246.2" stroke="#444444" stroke-width="1.2"/>
+    <line x1="856.3" y1="236.7" x2="856.3" y2="255.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="65.0" y="251.6" class="term" xml:space="preserve" fill="#808080">○</text>
+    <text x="89.6" y="251.6" class="term" xml:space="preserve" fill="#808080">da***@gmail.com</text>
+    <text x="302.8" y="251.6" class="term" xml:space="preserve" fill="#FF5F5F" font-weight="700">100%</text>
+    <text x="434.0" y="251.6" class="term" xml:space="preserve" fill="#87D787">54%</text>
+    <text x="483.2" y="251.6" class="term" xml:space="preserve" fill="#87D787">0%</text>
+    <text x="499.6" y="251.6" class="term" xml:space="preserve" fill="#808080">/</text>
+    <text x="507.8" y="251.6" class="term" xml:space="preserve" fill="#87D787">20%</text>
+    <text x="557.0" y="251.6" class="term" xml:space="preserve" fill="#F8FAFC" font-weight="700">5H FULL</text>
+    <line x1="28.1" y1="255.7" x2="28.1" y2="274.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="265.2" x2="835.8" y2="265.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="255.7" x2="856.3" y2="274.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="274.7" x2="28.1" y2="293.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="274.7" x2="856.3" y2="293.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="289.6" class="term" xml:space="preserve" fill="#00D7FF">重置时间</text>
+    <text x="130.6" y="289.6" class="term" xml:space="preserve" fill="#808080">G5h ↻ 11-28 19:09</text>
+    <text x="286.4" y="289.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="311.0" y="289.6" class="term" xml:space="preserve" fill="#808080">G7d ↻ 12-03 15:49</text>
+    <line x1="28.1" y1="293.7" x2="28.1" y2="312.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="293.7" x2="856.3" y2="312.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="308.6" class="term" xml:space="preserve" fill="#00D7FF">凭据状态</text>
+    <text x="130.6" y="308.6" class="term" xml:space="preserve" fill="#87D787">✓ refresh_token 正常</text>
+    <text x="302.8" y="308.6" class="term" xml:space="preserve" fill="#808080">· access 剩 47m</text>
+    <path d="M 28.1 312.7 V 318.2 Q 28.1 322.2 32.2 322.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <line x1="32.2" y1="322.2" x2="852.2" y2="322.2" stroke="#585858" stroke-width="1.2"/>
+    <path d="M 856.3 312.7 V 318.2 Q 856.3 322.2 852.2 322.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <text x="40.4" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">tab/1-3</text>
+    <text x="106.0" y="346.6" class="term" xml:space="preserve" fill="#808080">切视图</text>
+    <text x="171.6" y="346.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="196.2" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">↑↓</text>
+    <text x="220.8" y="346.6" class="term" xml:space="preserve" fill="#808080">选择</text>
+    <text x="270.0" y="346.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="294.6" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">enter</text>
+    <text x="343.8" y="346.6" class="term" xml:space="preserve" fill="#808080">启动 agy</text>
+    <text x="425.8" y="346.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="450.4" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">s</text>
+    <text x="466.8" y="346.6" class="term" xml:space="preserve" fill="#808080">设为主号</text>
+    <text x="548.8" y="346.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="573.4" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">r/R</text>
+    <text x="606.2" y="346.6" class="term" xml:space="preserve" fill="#808080">刷新全部/单个</text>
+    <text x="729.2" y="346.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="753.8" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">J/K</text>
+    <text x="786.6" y="346.6" class="term" xml:space="preserve" fill="#808080">调序</text>
+    <text x="40.4" y="365.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">+/-</text>
+    <text x="73.2" y="365.6" class="term" xml:space="preserve" fill="#808080">水位线</text>
+    <text x="138.8" y="365.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="163.4" y="365.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">[/]/a</text>
+    <text x="212.6" y="365.6" class="term" xml:space="preserve" fill="#808080">压缩阈值</text>
+    <text x="294.6" y="365.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="319.2" y="365.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">c</text>
+    <text x="335.6" y="365.6" class="term" xml:space="preserve" fill="#808080">清冷却</text>
+    <text x="401.2" y="365.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="425.8" y="365.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">l/d</text>
+    <text x="458.6" y="365.6" class="term" xml:space="preserve" fill="#808080">登录/移除</text>
+    <text x="548.8" y="365.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="573.4" y="365.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">m</text>
+    <text x="589.8" y="365.6" class="term" xml:space="preserve" fill="#808080">打码</text>
+    <text x="639.0" y="365.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="663.6" y="365.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">g</text>
+    <text x="680.0" y="365.6" class="term" xml:space="preserve" fill="#808080">语言</text>
+    <text x="729.2" y="365.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="753.8" y="365.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">q</text>
+    <text x="770.2" y="365.6" class="term" xml:space="preserve" fill="#808080">退出</text>
+  </g>
+  <g id="tab2" class="f2">
+    <text x="24.0" y="72.0" class="term" fill="#64748B">~</text><text x="40.4" y="72.0" class="term" fill="#38BDF8" font-weight="700">❯</text><text x="56.8" y="72.0" class="term" fill="#E2E8F0">agy-pro ui --mask   # Tab → 当前打开</text>
+    <path d="M 28.1 103.7 V 98.2 Q 28.1 94.2 32.2 94.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <line x1="32.2" y1="94.2" x2="852.2" y2="94.2" stroke="#585858" stroke-width="1.2"/>
+    <path d="M 852.2 94.2 Q 856.3 94.2 856.3 98.2 V 103.7" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <rect x="219.8" y="104.7" width="100.4" height="17.0" rx="4" fill="#87D787"/>
+    <line x1="28.1" y1="103.7" x2="28.1" y2="122.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="103.7" x2="856.3" y2="122.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="118.5" class="term" xml:space="preserve" fill="#38BDF8" font-weight="700">a</text>
+    <text x="56.8" y="118.5" class="term" xml:space="preserve" fill="#53ADF9" font-weight="700">g</text>
+    <text x="65.0" y="118.5" class="term" xml:space="preserve" fill="#6B9DF9" font-weight="700">y</text>
+    <text x="73.2" y="118.5" class="term" xml:space="preserve" fill="#818CF8" font-weight="700">-</text>
+    <text x="81.4" y="118.5" class="term" xml:space="preserve" fill="#9A8BF9" font-weight="700">p</text>
+    <text x="89.6" y="118.5" class="term" xml:space="preserve" fill="#AF89FB" font-weight="700">r</text>
+    <text x="97.8" y="118.5" class="term" xml:space="preserve" fill="#C083FC" font-weight="700">o</text>
+    <text x="114.2" y="118.5" class="term" xml:space="preserve" fill="#808080">v0.1.0</text>
+    <text x="179.8" y="118.5" class="term" xml:space="preserve" fill="#808080">号池</text>
+    <text x="229.0" y="118.5" class="term" xml:space="preserve" fill="#000000" font-weight="700">当前打开 3</text>
+    <text x="327.4" y="118.5" class="term" xml:space="preserve" fill="#808080">用量统计</text>
+    <text x="639.0" y="118.5" class="term" xml:space="preserve" fill="#808080">仅打开 · 1 运行 / 3 打开</text>
+    <line x1="28.1" y1="122.7" x2="28.1" y2="141.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="132.2" x2="835.8" y2="132.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="122.7" x2="856.3" y2="141.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="141.7" x2="28.1" y2="160.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="141.7" x2="856.3" y2="160.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="73.2" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">STATE</text>
+    <text x="138.8" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">SESSION</text>
+    <text x="434.0" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">ACCOUNT</text>
+    <text x="507.8" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">WORKSPACE</text>
+    <text x="671.8" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">STEPS</text>
+    <text x="737.4" y="156.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">TIME</text>
+    <line x1="28.1" y1="160.7" x2="28.1" y2="179.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="170.2" x2="835.8" y2="170.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="160.7" x2="856.3" y2="179.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="179.7" x2="28.1" y2="198.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="179.7" x2="856.3" y2="198.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="194.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">❯</text>
+    <text x="73.2" y="194.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">⠋</text>
+    <text x="89.6" y="194.6" class="term" xml:space="preserve" fill="#E2E8F0">运行</text>
+    <text x="138.8" y="194.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">重构支付网关与幂等重试逻辑</text>
+    <text x="434.0" y="194.6" class="term" xml:space="preserve" fill="#87D787">al***</text>
+    <text x="507.8" y="194.6" class="term" xml:space="preserve" fill="#00D7FF">~/work/billing-api</text>
+    <text x="680.0" y="194.6" class="term" xml:space="preserve" fill="#808080">46步</text>
+    <text x="737.4" y="194.6" class="term" xml:space="preserve" fill="#808080">2m前</text>
+    <line x1="28.1" y1="198.7" x2="28.1" y2="217.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="198.7" x2="856.3" y2="217.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="73.2" y="213.6" class="term" xml:space="preserve" fill="#00D7FF">● 打开</text>
+    <text x="138.8" y="213.6" class="term" xml:space="preserve" fill="#E2E8F0">Windows 跨平台文件锁与 CI 发版适配</text>
+    <text x="434.0" y="213.6" class="term" xml:space="preserve" fill="#87D787">bo***</text>
+    <text x="507.8" y="213.6" class="term" xml:space="preserve" fill="#00D7FF">~/work/agy-pro</text>
+    <text x="680.0" y="213.6" class="term" xml:space="preserve" fill="#808080">28步</text>
+    <text x="729.2" y="213.6" class="term" xml:space="preserve" fill="#808080">14m前</text>
+    <line x1="28.1" y1="217.7" x2="28.1" y2="236.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="217.7" x2="856.3" y2="236.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="73.2" y="232.6" class="term" xml:space="preserve" fill="#00D7FF">● 打开</text>
+    <text x="138.8" y="232.6" class="term" xml:space="preserve" fill="#E2E8F0">前端表格虚拟滚动性能排查</text>
+    <text x="434.0" y="232.6" class="term" xml:space="preserve" fill="#808080">native</text>
+    <text x="507.8" y="232.6" class="term" xml:space="preserve" fill="#00D7FF">~/work/web-console</text>
+    <text x="680.0" y="232.6" class="term" xml:space="preserve" fill="#808080">15步</text>
+    <text x="729.2" y="232.6" class="term" xml:space="preserve" fill="#808080">39m前</text>
+    <line x1="28.1" y1="236.7" x2="28.1" y2="255.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="246.2" x2="835.8" y2="246.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="236.7" x2="856.3" y2="255.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="255.7" x2="28.1" y2="274.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="255.7" x2="856.3" y2="274.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="270.6" class="term" xml:space="preserve" fill="#00D7FF">目录</text>
+    <text x="97.8" y="270.6" class="term" xml:space="preserve" fill="#808080">~/work/billing-api</text>
+    <text x="261.8" y="270.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="286.4" y="270.6" class="term" xml:space="preserve" fill="#808080">终端 ttys002</text>
+    <text x="401.2" y="270.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="425.8" y="270.6" class="term" xml:space="preserve" fill="#808080">账号 al***@gmail.com</text>
+    <text x="606.2" y="270.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="630.8" y="270.6" class="term" xml:space="preserve" fill="#808080">ID 1111aaaa</text>
+    <line x1="28.1" y1="274.7" x2="28.1" y2="293.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="274.7" x2="856.3" y2="293.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="289.6" class="term" xml:space="preserve" fill="#00D7FF">预览</text>
+    <text x="97.8" y="289.6" class="term" xml:space="preserve" fill="#808080">正在跑并发压测与边界单测</text>
+    <path d="M 28.1 293.7 V 299.2 Q 28.1 303.2 32.2 303.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <line x1="32.2" y1="303.2" x2="852.2" y2="303.2" stroke="#585858" stroke-width="1.2"/>
+    <path d="M 856.3 293.7 V 299.2 Q 856.3 303.2 852.2 303.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <text x="40.4" y="327.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">tab/1-3</text>
+    <text x="106.0" y="327.6" class="term" xml:space="preserve" fill="#808080">切视图</text>
+    <text x="171.6" y="327.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="196.2" y="327.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">↑↓</text>
+    <text x="220.8" y="327.6" class="term" xml:space="preserve" fill="#808080">选择</text>
+    <text x="270.0" y="327.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="294.6" y="327.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">a</text>
+    <text x="311.0" y="327.6" class="term" xml:space="preserve" fill="#808080">仅打开/含历史</text>
+    <text x="434.0" y="327.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="458.6" y="327.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">enter</text>
+    <text x="507.8" y="327.6" class="term" xml:space="preserve" fill="#808080">当前号恢复</text>
+    <text x="606.2" y="327.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="630.8" y="327.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">ctrl+n</text>
+    <text x="688.2" y="327.6" class="term" xml:space="preserve" fill="#808080">下个号恢复</text>
+    <text x="786.6" y="327.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="811.2" y="327.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">r</text>
+    <text x="827.6" y="327.6" class="term" xml:space="preserve" fill="#808080">刷新</text>
+    <text x="40.4" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">m</text>
+    <text x="56.8" y="346.6" class="term" xml:space="preserve" fill="#808080">打码</text>
+    <text x="106.0" y="346.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="130.6" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">g</text>
+    <text x="147.0" y="346.6" class="term" xml:space="preserve" fill="#808080">语言</text>
+    <text x="196.2" y="346.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="220.8" y="346.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">q</text>
+    <text x="237.2" y="346.6" class="term" xml:space="preserve" fill="#808080">退出</text>
+  </g>
+  <g id="tab3" class="f3">
+    <text x="24.0" y="72.0" class="term" fill="#64748B">~</text><text x="40.4" y="72.0" class="term" fill="#38BDF8" font-weight="700">❯</text><text x="56.8" y="72.0" class="term" fill="#E2E8F0">agy-pro ui --mask   # Tab → 用量统计</text>
+    <path d="M 28.1 103.7 V 98.2 Q 28.1 94.2 32.2 94.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <line x1="32.2" y1="94.2" x2="852.2" y2="94.2" stroke="#585858" stroke-width="1.2"/>
+    <path d="M 852.2 94.2 Q 856.3 94.2 856.3 98.2 V 103.7" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <rect x="310.0" y="104.7" width="84.0" height="17.0" rx="4" fill="#87D787"/>
+    <line x1="28.1" y1="103.7" x2="28.1" y2="122.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="103.7" x2="856.3" y2="122.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="118.5" class="term" xml:space="preserve" fill="#38BDF8" font-weight="700">a</text>
+    <text x="56.8" y="118.5" class="term" xml:space="preserve" fill="#53ADF9" font-weight="700">g</text>
+    <text x="65.0" y="118.5" class="term" xml:space="preserve" fill="#6B9DF9" font-weight="700">y</text>
+    <text x="73.2" y="118.5" class="term" xml:space="preserve" fill="#818CF8" font-weight="700">-</text>
+    <text x="81.4" y="118.5" class="term" xml:space="preserve" fill="#9A8BF9" font-weight="700">p</text>
+    <text x="89.6" y="118.5" class="term" xml:space="preserve" fill="#AF89FB" font-weight="700">r</text>
+    <text x="97.8" y="118.5" class="term" xml:space="preserve" fill="#C083FC" font-weight="700">o</text>
+    <text x="114.2" y="118.5" class="term" xml:space="preserve" fill="#808080">v0.1.0</text>
+    <text x="179.8" y="118.5" class="term" xml:space="preserve" fill="#808080">号池</text>
+    <text x="220.8" y="118.5" class="term" xml:space="preserve" fill="#808080">当前打开 3</text>
+    <text x="319.2" y="118.5" class="term" xml:space="preserve" fill="#000000" font-weight="700">用量统计</text>
+    <text x="680.0" y="118.5" class="term" xml:space="preserve" fill="#808080">今日</text>
+    <text x="721.0" y="118.5" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">[近 7 天]</text>
+    <text x="803.0" y="118.5" class="term" xml:space="preserve" fill="#808080">全部</text>
+    <line x1="28.1" y1="122.7" x2="28.1" y2="141.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="132.2" x2="835.8" y2="132.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="122.7" x2="856.3" y2="141.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="141.7" x2="28.1" y2="160.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="141.7" x2="856.3" y2="160.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="65.0" y="156.6" class="term" xml:space="preserve" fill="#00D7FF">总消耗</text>
+    <text x="122.4" y="156.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">143M</text>
+    <text x="163.4" y="156.6" class="term" xml:space="preserve" fill="#808080">tokens</text>
+    <text x="229.0" y="156.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="253.6" y="156.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">418</text>
+    <text x="286.4" y="156.6" class="term" xml:space="preserve" fill="#808080">次调用</text>
+    <text x="352.0" y="156.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="376.6" y="156.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">19</text>
+    <text x="401.2" y="156.6" class="term" xml:space="preserve" fill="#808080">个会话</text>
+    <text x="466.8" y="156.6" class="term" xml:space="preserve" fill="#808080">(14ms)</text>
+    <line x1="28.1" y1="160.7" x2="28.1" y2="179.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="160.7" x2="856.3" y2="179.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="65.0" y="175.6" class="term" xml:space="preserve" fill="#00D7FF">未缓存输入</text>
+    <text x="155.2" y="175.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">6.84M</text>
+    <text x="212.6" y="175.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="237.2" y="175.6" class="term" xml:space="preserve" fill="#808080">缓存读</text>
+    <text x="294.6" y="175.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">133M</text>
+    <text x="335.6" y="175.6" class="term" xml:space="preserve" fill="#87D787">95.1%</text>
+    <text x="393.0" y="175.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="417.6" y="175.6" class="term" xml:space="preserve" fill="#808080">输出</text>
+    <text x="458.6" y="175.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">3.06M</text>
+    <text x="507.8" y="175.6" class="term" xml:space="preserve" fill="#808080">(思考 38%)</text>
+    <line x1="28.1" y1="179.7" x2="28.1" y2="198.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="189.2" x2="835.8" y2="189.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="179.7" x2="856.3" y2="198.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="198.7" x2="28.1" y2="217.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="198.7" x2="856.3" y2="217.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="213.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">MODEL</text>
+    <text x="188.0" y="213.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">CALLS</text>
+    <text x="245.4" y="213.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">TOTAL</text>
+    <text x="302.8" y="213.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">INPUT</text>
+    <text x="360.2" y="213.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">CACHE</text>
+    <text x="417.6" y="213.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">HIT%</text>
+    <text x="466.8" y="213.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">OUTPUT</text>
+    <text x="532.4" y="213.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">SHARE</text>
+    <line x1="28.1" y1="217.7" x2="28.1" y2="236.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="227.2" x2="835.8" y2="227.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="217.7" x2="856.3" y2="236.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="236.7" x2="28.1" y2="255.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="533.4" y1="246.2" x2="564.2" y2="246.2" stroke="#FF87FF" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="565.2" y1="246.2" x2="581.6" y2="246.2" stroke="#808080" stroke-width="1.2"/>
+    <line x1="856.3" y1="236.7" x2="856.3" y2="255.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="251.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">gemini-4-neon</text>
+    <text x="204.4" y="251.6" class="term" xml:space="preserve" fill="#808080">264</text>
+    <text x="253.6" y="251.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">102M</text>
+    <text x="302.8" y="251.6" class="term" xml:space="preserve" fill="#E2E8F0">4.12M</text>
+    <text x="360.2" y="251.6" class="term" xml:space="preserve" fill="#808080">96.2M</text>
+    <text x="425.8" y="251.6" class="term" xml:space="preserve" fill="#87D787">96%</text>
+    <text x="475.0" y="251.6" class="term" xml:space="preserve" fill="#E2E8F0">1.94M</text>
+    <text x="598.0" y="251.6" class="term" xml:space="preserve" fill="#808080">72%</text>
+    <line x1="28.1" y1="255.7" x2="28.1" y2="274.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="533.4" y1="265.2" x2="539.6" y2="265.2" stroke="#FF87FF" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="540.6" y1="265.2" x2="581.6" y2="265.2" stroke="#808080" stroke-width="1.2"/>
+    <line x1="856.3" y1="255.7" x2="856.3" y2="274.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="270.6" class="term" xml:space="preserve" fill="#00D7FF">gemini-3.5-pro</text>
+    <text x="212.6" y="270.6" class="term" xml:space="preserve" fill="#808080">92</text>
+    <text x="245.4" y="270.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">27.2M</text>
+    <text x="302.8" y="270.6" class="term" xml:space="preserve" fill="#E2E8F0">1.71M</text>
+    <text x="360.2" y="270.6" class="term" xml:space="preserve" fill="#808080">24.8M</text>
+    <text x="425.8" y="270.6" class="term" xml:space="preserve" fill="#87D787">94%</text>
+    <text x="483.2" y="270.6" class="term" xml:space="preserve" fill="#E2E8F0">710K</text>
+    <text x="598.0" y="270.6" class="term" xml:space="preserve" fill="#808080">19%</text>
+    <line x1="28.1" y1="274.7" x2="28.1" y2="293.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="533.4" y1="284.2" x2="539.6" y2="284.2" stroke="#FF87FF" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="540.6" y1="284.2" x2="581.6" y2="284.2" stroke="#808080" stroke-width="1.2"/>
+    <line x1="856.3" y1="274.7" x2="856.3" y2="293.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="289.6" class="term" xml:space="preserve" fill="#00D7FF">claude-sonnet-4</text>
+    <text x="212.6" y="289.6" class="term" xml:space="preserve" fill="#808080">48</text>
+    <text x="245.4" y="289.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">11.6M</text>
+    <text x="311.0" y="289.6" class="term" xml:space="preserve" fill="#E2E8F0">820K</text>
+    <text x="360.2" y="289.6" class="term" xml:space="preserve" fill="#808080">10.4M</text>
+    <text x="425.8" y="289.6" class="term" xml:space="preserve" fill="#87D787">93%</text>
+    <text x="483.2" y="289.6" class="term" xml:space="preserve" fill="#E2E8F0">330K</text>
+    <text x="606.2" y="289.6" class="term" xml:space="preserve" fill="#808080">8%</text>
+    <line x1="28.1" y1="293.7" x2="28.1" y2="312.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="533.4" y1="303.2" x2="539.6" y2="303.2" stroke="#FF87FF" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="540.6" y1="303.2" x2="581.6" y2="303.2" stroke="#808080" stroke-width="1.2"/>
+    <line x1="856.3" y1="293.7" x2="856.3" y2="312.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="308.6" class="term" xml:space="preserve" fill="#00D7FF">gemini-3-flash</text>
+    <text x="212.6" y="308.6" class="term" xml:space="preserve" fill="#808080">14</text>
+    <text x="245.4" y="308.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">1.77M</text>
+    <text x="311.0" y="308.6" class="term" xml:space="preserve" fill="#E2E8F0">190K</text>
+    <text x="360.2" y="308.6" class="term" xml:space="preserve" fill="#808080">1.50M</text>
+    <text x="425.8" y="308.6" class="term" xml:space="preserve" fill="#87D787">89%</text>
+    <text x="475.0" y="308.6" class="term" xml:space="preserve" fill="#E2E8F0">80.0K</text>
+    <text x="606.2" y="308.6" class="term" xml:space="preserve" fill="#808080">1%</text>
+    <line x1="28.1" y1="312.7" x2="28.1" y2="331.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="322.2" x2="835.8" y2="322.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="312.7" x2="856.3" y2="331.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="331.7" x2="28.1" y2="350.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="331.7" x2="856.3" y2="350.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="73.2" y="346.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">TOP SESSIONS</text>
+    <text x="368.4" y="346.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">CALLS</text>
+    <text x="425.8" y="346.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">TOTAL</text>
+    <text x="483.2" y="346.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">HIT%</text>
+    <text x="532.4" y="346.6" class="term" xml:space="preserve" fill="#808080" font-weight="700">OUTPUT</text>
+    <line x1="28.1" y1="350.7" x2="28.1" y2="369.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="48.6" y1="360.2" x2="835.8" y2="360.2" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="350.7" x2="856.3" y2="369.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="28.1" y1="369.7" x2="28.1" y2="388.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="369.7" x2="856.3" y2="388.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="48.6" y="384.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">❯</text>
+    <text x="73.2" y="384.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">重构支付网关与幂等重试逻辑</text>
+    <text x="368.4" y="384.6" class="term" xml:space="preserve" fill="#808080">124次</text>
+    <text x="425.8" y="384.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">49.9M</text>
+    <text x="491.4" y="384.6" class="term" xml:space="preserve" fill="#87D787">96%</text>
+    <text x="548.8" y="384.6" class="term" xml:space="preserve" fill="#808080">980K</text>
+    <line x1="28.1" y1="388.7" x2="28.1" y2="407.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="388.7" x2="856.3" y2="407.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="73.2" y="403.6" class="term" xml:space="preserve" fill="#E2E8F0">Windows 跨平台文件锁与 CI 发版适配</text>
+    <text x="376.6" y="403.6" class="term" xml:space="preserve" fill="#808080">86次</text>
+    <text x="425.8" y="403.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">33.6M</text>
+    <text x="491.4" y="403.6" class="term" xml:space="preserve" fill="#87D787">96%</text>
+    <text x="548.8" y="403.6" class="term" xml:space="preserve" fill="#808080">640K</text>
+    <line x1="28.1" y1="407.7" x2="28.1" y2="426.7" stroke="#585858" stroke-width="1.2"/>
+    <line x1="856.3" y1="407.7" x2="856.3" y2="426.7" stroke="#585858" stroke-width="1.2"/>
+    <text x="73.2" y="422.6" class="term" xml:space="preserve" fill="#E2E8F0">前端表格虚拟滚动性能排查</text>
+    <text x="376.6" y="422.6" class="term" xml:space="preserve" fill="#808080">59次</text>
+    <text x="425.8" y="422.6" class="term" xml:space="preserve" fill="#E2E8F0" font-weight="700">20.6M</text>
+    <text x="491.4" y="422.6" class="term" xml:space="preserve" fill="#87D787">95%</text>
+    <text x="548.8" y="422.6" class="term" xml:space="preserve" fill="#808080">420K</text>
+    <path d="M 28.1 426.7 V 432.2 Q 28.1 436.2 32.2 436.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <line x1="32.2" y1="436.2" x2="852.2" y2="436.2" stroke="#585858" stroke-width="1.2"/>
+    <path d="M 856.3 426.7 V 432.2 Q 856.3 436.2 852.2 436.2" fill="none" stroke="#585858" stroke-width="1.2"/>
+    <text x="40.4" y="460.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">tab/1-3</text>
+    <text x="106.0" y="460.6" class="term" xml:space="preserve" fill="#808080">切视图</text>
+    <text x="171.6" y="460.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="196.2" y="460.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">←/→/t</text>
+    <text x="245.4" y="460.6" class="term" xml:space="preserve" fill="#808080">今日/7天/全部</text>
+    <text x="368.4" y="460.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="393.0" y="460.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">↑↓</text>
+    <text x="417.6" y="460.6" class="term" xml:space="preserve" fill="#808080">选会话</text>
+    <text x="483.2" y="460.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="507.8" y="460.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">enter</text>
+    <text x="557.0" y="460.6" class="term" xml:space="preserve" fill="#808080">当前号恢复</text>
+    <text x="655.4" y="460.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="680.0" y="460.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">ctrl+n</text>
+    <text x="737.4" y="460.6" class="term" xml:space="preserve" fill="#808080">下个号恢复</text>
+    <text x="40.4" y="479.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">r</text>
+    <text x="56.8" y="479.6" class="term" xml:space="preserve" fill="#808080">重扫</text>
+    <text x="106.0" y="479.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="130.6" y="479.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">g</text>
+    <text x="147.0" y="479.6" class="term" xml:space="preserve" fill="#808080">语言</text>
+    <text x="196.2" y="479.6" class="term" xml:space="preserve" fill="#808080">·</text>
+    <text x="220.8" y="479.6" class="term" xml:space="preserve" fill="#FF87FF" font-weight="700">q</text>
+    <text x="237.2" y="479.6" class="term" xml:space="preserve" fill="#808080">退出</text>
+  </g>
+</svg>
