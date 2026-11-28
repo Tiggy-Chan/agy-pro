@@ -122,19 +122,12 @@ func readSystemCABundle() []byte {
 	if envFile := strings.TrimSpace(os.Getenv("SSL_CERT_FILE")); envFile != "" && envFile != activeSeamlessCA {
 		candidates = append(candidates, envFile)
 	}
-	candidates = append(candidates,
-		"/etc/ssl/cert.pem",                  // macOS, Alpine, OpenBSD
-		"/etc/ssl/certs/ca-certificates.crt", // Debian, Ubuntu, Gentoo, Arch
-		"/etc/pki/tls/certs/ca-bundle.crt",   // RHEL, Fedora, CentOS
-		"/etc/ssl/ca-bundle.pem",             // openSUSE
-		"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
-	)
 	for _, p := range candidates {
 		if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
 			return data
 		}
 	}
-	return nil
+	return readPlatformSystemRoots()
 }
 
 // targetHostProvider allows GetCertificate to fall back to the CONNECT host when SNI is empty

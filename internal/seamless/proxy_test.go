@@ -487,3 +487,23 @@ func TestSeamlessHTTPServerLogsNeverLeakToStderr(t *testing.T) {
 		t.Fatalf("expected net/http TLS error routed into seamless log file, got:\n%s", string(raw))
 	}
 }
+
+func TestCABundleIncludesSystemRootsAndEphemeralCA(t *testing.T) {
+	ca, err := NewEphemeralCA()
+	if err != nil {
+		t.Fatalf("NewEphemeralCA failed: %v", err)
+	}
+	bundlePath, err := ca.WriteBundle(t.TempDir())
+	if err != nil {
+		t.Fatalf("WriteBundle failed: %v", err)
+	}
+	raw, err := os.ReadFile(bundlePath)
+	if err != nil {
+		t.Fatalf("read bundle failed: %v", err)
+	}
+	certCount := strings.Count(string(raw), "-----BEGIN CERTIFICATE-----")
+	// Must contain at least multiple system root CAs (Linux/macOS PEM or Windows ROOT store) + our ephemeral CA
+	if certCount < 2 {
+		t.Fatalf("expected bundle to contain system root CAs + ephemeral CA, found only %d cert(s)", certCount)
+	}
+}

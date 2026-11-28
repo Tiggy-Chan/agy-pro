@@ -331,7 +331,7 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	if !v.LoadState().SeamlessDisabled {
 		t.Fatalf("expected SeamlessDisabled=true after config seamless off")
 	}
-	if enabled, _ := resolveSeamlessMode(runOptions{}, v.LoadState()); enabled {
+	if enabled := resolveSeamlessMode(runOptions{}, v.LoadState()); enabled {
 		t.Fatalf("expected seamless disabled when state.SeamlessDisabled=true")
 	}
 	if rc := runCLI([]string{"config", "seamless", "on"}, dir); rc != 0 {
@@ -340,8 +340,8 @@ func TestUnknownSubcommandAndConfig(t *testing.T) {
 	if v.LoadState().SeamlessDisabled {
 		t.Fatalf("expected SeamlessDisabled=false after config seamless on")
 	}
-	if enabled, _ := resolveSeamlessMode(runOptions{}, v.LoadState()); enabled != (runtime.GOOS != "windows") {
-		t.Fatalf("expected default seamless=%v on %s, got %v", runtime.GOOS != "windows", runtime.GOOS, enabled)
+	if enabled := resolveSeamlessMode(runOptions{}, v.LoadState()); !enabled {
+		t.Fatalf("expected default seamless=true on %s, got false", runtime.GOOS)
 	}
 	if rc := runCLI([]string{"config", "seamless", "maybe"}, dir); rc != 2 {
 		t.Fatalf("expected exit 2 on invalid config seamless value, got %d", rc)

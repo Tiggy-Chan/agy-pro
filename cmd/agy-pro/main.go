@@ -890,8 +890,6 @@ func cmdConfig(v *vault.Vault, args []string) int {
 		seamlessDisp := "on"
 		if st.SeamlessDisabled {
 			seamlessDisp = "off"
-		} else if runtime.GOOS == "windows" {
-			seamlessDisp = "auto (direct)"
 		}
 		fmt.Printf("%s      %s  %s\n",
 			ui.SHeadDim.Render("seamless"),
@@ -1232,9 +1230,7 @@ func cmdDoctor(v *vault.Vault, args []string) int {
 	} else {
 		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.compact"), ui.SDim.Render(i18n.T("doctor.compact_off"))))
 	}
-	if runtime.GOOS == "windows" {
-		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.seamless"), ui.SDim.Render(i18n.T("doctor.seamless_win"))))
-	} else if st.SeamlessDisabled {
+	if st.SeamlessDisabled {
 		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.seamless"), ui.SDim.Render(i18n.T("doctor.seamless_off"))))
 	} else {
 		envLines = append(envLines, fmt.Sprintf("  %s %s %s", ui.SGood.Render("✓"), i18n.T("doctor.seamless"), ui.SDim.Render(i18n.T("doctor.seamless_on"))))
@@ -1332,24 +1328,23 @@ type runOptions struct {
 	flagErr             string
 }
 
-func resolveSeamlessMode(opts runOptions, st *vault.State) (enabled bool, explicitRequest bool) {
+func resolveSeamlessMode(opts runOptions, st *vault.State) bool {
 	if opts.hasSeamlessOverride {
-		return opts.seamless, opts.seamless
+		return opts.seamless
 	}
 	if raw, ok := os.LookupEnv("AGY_PRO_SEAMLESS"); ok && strings.TrimSpace(raw) != "" {
 		v := strings.TrimSpace(raw)
 		if v == "0" || strings.EqualFold(v, "false") || strings.EqualFold(v, "off") {
-			return false, false
+			return false
 		}
 		if v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "on") {
-			return true, true
+			return true
 		}
 	}
 	if st != nil && st.SeamlessDisabled {
-		return false, false
+		return false
 	}
-	// Enabled by default on Linux/macOS; Windows cleanly uses zero-proxy --resume failover.
-	return runtime.GOOS != "windows", false
+	return true
 }
 
 func parseRunFlags(argv []string) (runOptions, []string) {
@@ -1551,42 +1546,35 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 		writeFn  func(email, cid string)
 	}
 	liveState.curEmail = currentEmail
-	useSeamless, explicitSeamless := resolveSeamlessMode(opts, st)
-	if useSeamless {
-		if runtime.GOOS == "windows" {
-			if explicitSeamless {
-				fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("run.seamless_windows_unsupported"))
-			}
+	if resolveSeamlessMode(opts, st) {
+		seamlessLog := filepath.Join(v.LogsDir, fmt.Sprintf("seamless-%d.log", os.Getpid()))
+		seamlessProvider = seamless.NewVaultTokenProvider(
+			v, agyBin, currentEmail, reservePct, opts.autoSwitch,
+			func(oldEmail, newEmail, reason string) {
+				liveState.mu.Lock()
+				liveState.curEmail = newEmail
+				cid := liveState.curConv
+				fn := liveState.writeFn
+				liveState.mu.Unlock()
+				if fn != nil {
+					fn(newEmail, cid)
+				}
+				spawnDetachedSelf(v.StateDir, "_verify", oldEmail)
+				if !printMode && !st.NotifyDisabled {
+					runner.NewNotifier(true, runner.DefaultNotifyMinDuration).NotifyFailover(oldEmail, newEmail, "seamless")
+				}
+			},
+		)
+		sp, err := seamless.Start(seamless.Options{
+			Provider: seamlessProvider,
+			LogPath:  seamlessLog,
+			TempDir:  v.StateDir,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("run.seamless_start_err", err))
 		} else {
-			seamlessLog := filepath.Join(v.LogsDir, fmt.Sprintf("seamless-%d.log", os.Getpid()))
-			seamlessProvider = seamless.NewVaultTokenProvider(
-				v, agyBin, currentEmail, reservePct, opts.autoSwitch,
-				func(oldEmail, newEmail, reason string) {
-					liveState.mu.Lock()
-					liveState.curEmail = newEmail
-					cid := liveState.curConv
-					fn := liveState.writeFn
-					liveState.mu.Unlock()
-					if fn != nil {
-						fn(newEmail, cid)
-					}
-					spawnDetachedSelf(v.StateDir, "_verify", oldEmail)
-					if !printMode && !st.NotifyDisabled {
-						runner.NewNotifier(true, runner.DefaultNotifyMinDuration).NotifyFailover(oldEmail, newEmail, "seamless")
-					}
-				},
-			)
-			sp, err := seamless.Start(seamless.Options{
-				Provider: seamlessProvider,
-				LogPath:  seamlessLog,
-				TempDir:  v.StateDir,
-			})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("run.seamless_start_err", err))
-			} else {
-				seamlessProxy = sp
-				defer seamlessProxy.Close()
-			}
+			seamlessProxy = sp
+			defer seamlessProxy.Close()
 		}
 	}
 
