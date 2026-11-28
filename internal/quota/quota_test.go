@@ -113,6 +113,12 @@ func TestParseFetchQuotaStatusProtoIncludingZeroOmitted(t *testing.T) {
 	}
 }
 
+func TestProbeAccountDefaultsToOfficialCLI(t *testing.T) {
+	if DirectQuotaEndpoint != "" {
+		t.Fatalf("expected DirectQuotaEndpoint disabled by default (aicode FetchQuotaStatus returns stale 100%% remaining), got %q", DirectQuotaEndpoint)
+	}
+}
+
 func TestProbeAccountDirectGRPCFastPathAndCLIFallback(t *testing.T) {
 	now := time.Now()
 	payload := buildTestQuotaResponse(0.85, false, 0.90, now.Unix()+3600, now.Unix()+86400)

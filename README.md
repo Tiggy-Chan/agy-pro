@@ -32,9 +32,9 @@
 
 - **Single Static Binary (Zero CGO)**: Prebuilt binaries for Linux, macOS, and Windows (`amd64` / `arm64`, PowerShell, CMD, and Windows Terminal) with one-line SHA-256 verified installers. Local commands (`status`, `usage`, `use`, `next`) finish in `< 5ms` with ~4 MB RSS.
 - **Zero-Proxy Native Execution**: Isolated account vault under `~/.local/state/agy-pro/` (`%LOCALAPPDATA%\agy-pro\` on Windows) using official `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` (no system Keychain writes, no `SSH_CONNECTION` spoofing). Auto-detects official `agy` (including `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows) and supports zero-arg `agy-pro auth import` to onboard your existing active login immediately.
-- **Sub-Second Direct Quota Probing + ~1.5s Auto-Failover**:
+- **Concurrent Official Quota Probing + ~1.5s Auto-Failover**:
   - Strict **drain** rotation (exhausts one account's 5h/7d pool before advancing; never bounces back).
-  - Queries Gemini + Claude/GPT 5h/7d pools concurrently over Go stdlib HTTP/2 gRPC (`FetchQuotaStatus`, ~0.8s for 4 accounts) with automatic fallback to official `agy --print /usage` on token refresh or schema changes.
+  - Queries Gemini + Claude/GPT 5h/7d pools concurrently across all accounts via detached official `agy --print /usage` (100% upstream parity + automatic silent OAuth token renewal).
   - On fatal backend `HTTP 429` exhaustion, immediately switches to the next ready account and resumes with `--resume <id>`, while a detached background verifier records exact reset timestamps and self-heals transient 429s.
   - Configurable low-quota proactive switching (`agy-pro config reserve 10` or `--reserve 10`).
 - **3-in-1 Interactive Dashboard (`agy-pro ui`) & Standalone `agy-pro usage`**:

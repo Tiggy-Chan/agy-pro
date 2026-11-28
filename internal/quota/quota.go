@@ -20,12 +20,14 @@ import (
 	"github.com/Tiggy-Chan/agy-pro/internal/vault"
 )
 
-const defaultDirectQuotaEndpoint = "https://aicode.googleapis.com/google.gca.aicode.v1alpha.PredictionService/FetchQuotaStatus"
-
+// DirectQuotaEndpoint is disabled by default: Google migrated live Gemini 5h/7d quota
+// accounting away from aicode.googleapis.com/.../FetchQuotaStatus (which now returns a
+// stale 100% remaining / 0% used placeholder for all accounts). Probing via detached
+// official `agy --print /usage` guarantees 100% parity with upstream quota accounting
+// and silently refreshes OAuth tokens when needed.
+// Exported so unit tests (or a verified future endpoint) can enable direct gRPC probing.
 var (
-	// DirectQuotaEndpoint is the direct HTTP/2 gRPC endpoint used by native agy for `/usage`.
-	// Exported so unit tests can point it at a local HTTP/2 test server.
-	DirectQuotaEndpoint = defaultDirectQuotaEndpoint
+	DirectQuotaEndpoint = ""
 
 	// DirectHTTPClient reuses HTTP/2 TLS connections across concurrent account probes and honors
 	// standard proxy environment variables (HTTPS_PROXY / HTTP_PROXY / NO_PROXY).
@@ -361,13 +363,16 @@ func resolveFreshAccessToken(acct *vault.Account, now float64) string {
 }
 
 // ProbeAccount queries a single account's live Gemini + Claude/GPT 5h/7d quotas.
-// Fast path (~0.5s): direct HTTP/2 gRPC FetchQuotaStatus using the account's valid OAuth access_token.
-// Fallback path: detached official `agy --print /usage` (handles expired token refresh & future schema changes).
+// By default uses detached official `agy --print /usage` for 100% upstream accuracy and
+// automatic OAuth token renewal. When DirectQuotaEndpoint is explicitly configured, tries
+// direct HTTP/2 gRPC first with automatic CLI fallback.
 func ProbeAccount(acct *vault.Account, agyBin string, timeout time.Duration) *vault.Quota {
 	now := float64(time.Now().UnixNano()) / 1e9
-	if token := resolveFreshAccessToken(acct, now); token != "" {
-		if q, err := probeDirectGRPC(token, timeout, now); err == nil && q != nil && q.Error == "" {
-			return q
+	if DirectQuotaEndpoint != "" {
+		if token := resolveFreshAccessToken(acct, now); token != "" {
+			if q, err := probeDirectGRPC(token, timeout, now); err == nil && q != nil && q.Error == "" {
+				return q
+			}
 		}
 	}
 	return probeViaAgyCLI(acct, agyBin, timeout, now)
