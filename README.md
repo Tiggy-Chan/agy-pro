@@ -134,6 +134,7 @@ agy-pro doctor [--mask]                        # Environment isolation, upstream
 | `--refresh` | Refresh active account quota before launching |
 | `--no-auto-switch` | Disable automatic 5h/7d failover and resume for this run |
 | `--mask` / `AGY_PRO_MASK=1` | Obscure account emails (`al***@gmail.com`) for demos and screenshots |
+| `AGY_PRO_RESUME_PROMPT` | Override the auto-resume prompt sent after 429 failover (default `continue`) |
 | `AGY_PRO_LANG` | Override UI/CLI language (`en` / `zh`) |
 | `AGY_PRO_NO_TITLE=1` | Disable OSC 0 live terminal tab title synchronization |
 | `AGY_PRO_STATE_DIR` | Override isolated account vault directory (default `~/.local/state/agy-pro` or `%LOCALAPPDATA%\agy-pro`) |

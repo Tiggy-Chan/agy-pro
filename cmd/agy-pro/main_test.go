@@ -730,4 +730,14 @@ func TestMaskEmailAutoImportCurrentAndUsageCLI(t *testing.T) {
 	if rc := runCLI([]string{"usage", "--bad-flag"}, poolDir); rc != 2 {
 		t.Fatalf("expected usage --bad-flag exit 2, got %d", rc)
 	}
+
+	// Default auto-resume prompt is concise "continue" and supports AGY_PRO_RESUME_PROMPT override
+	t.Setenv("AGY_PRO_RESUME_PROMPT", "")
+	if got := runner.ResumeContinuePrompt(); got != "continue" {
+		t.Fatalf("expected default resume prompt 'continue', got %q", got)
+	}
+	t.Setenv("AGY_PRO_RESUME_PROMPT", "please proceed")
+	if got := runner.ResumeContinuePrompt(); got != "please proceed" {
+		t.Fatalf("expected custom resume prompt override, got %q", got)
+	}
 }

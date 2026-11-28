@@ -39,6 +39,9 @@ var TerminalResetSeq = []byte(
 )
 
 func ResumeContinuePrompt() string {
+	if custom := strings.TrimSpace(os.Getenv("AGY_PRO_RESUME_PROMPT")); custom != "" {
+		return custom
+	}
 	return i18n.T("runner.resume_prompt")
 }
 

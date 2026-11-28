@@ -246,7 +246,7 @@
   "run.failover_no_conv": "未定位到可安全续接的本地会话文件，已切至新主号并停止自动续跑（避免误开空对话）。请运行 %s 选择原会话继续。",
   "run.first_run_init": "首次启动已初始化默认配置 Auto-compact=%s（零 dotfiles 修改）",
 
-  "runner.resume_prompt": "刚刚因上一个账号额度耗尽（5小时或7天池触顶），agy-pro 已自动切换到新账号并恢复当前会话。请先核对刚才中断前的进展与本地文件状态，然后直接继续完成未完成的任务。",
+  "runner.resume_prompt": "continue",
   "notify.default_session": "当前会话",
   "notify.done_title": "agy-pro · 任务已完成",
   "notify.done_body": "✦ %s（耗时 %s）",

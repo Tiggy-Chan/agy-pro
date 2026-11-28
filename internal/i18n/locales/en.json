@@ -246,7 +246,7 @@
   "run.failover_no_conv": "No persisted local session file found to safely resume. Switched active account; run %s to pick your conversation.",
   "run.first_run_init": "Initialized default Auto-compact=%s (zero dotfiles modified)",
 
-  "runner.resume_prompt": "The previous account hit its 5-hour or 7-day quota limit, so agy-pro automatically switched to a fresh account and resumed this session. Please verify recent progress and local file state, then continue completing the unfinished task.",
+  "runner.resume_prompt": "continue",
   "notify.default_session": "Active Session",
   "notify.done_title": "agy-pro · Task Completed",
   "notify.done_body": "✦ %s (elapsed %s)",

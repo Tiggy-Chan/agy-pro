@@ -132,6 +132,7 @@ agy-pro doctor [--mask]                        # 运行环境隔离、上游数�
 | `--refresh` | 启动前先联网刷新当前主号实时额度 |
 | `--no-auto-switch` | 本次关闭撞 5h/7d 墙自动秒切续跑 |
 | `--mask` / `AGY_PRO_MASK=1` | 开启隐私打码模式（`al***@gmail.com`），适合录屏与截图分享 |
+| `AGY_PRO_RESUME_PROMPT` | 自定义撞 429 自动续跑时发送的提示词（默认 `continue`） |
 | `AGY_PRO_LANG` | 覆写界面语言（`en` / `zh`） |
 | `AGY_PRO_NO_TITLE=1` | 关闭 OSC 0 终端标签页实时标题同步 |
 | `AGY_PRO_STATE_DIR` | 指定独立号池与状态目录（默认 `~/.local/state/agy-pro` 或 `%LOCALAPPDATA%\agy-pro`） |
