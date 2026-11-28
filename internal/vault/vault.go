@@ -1132,7 +1132,8 @@ func (v *Vault) PruneLogs(keep int) {
 	}
 	var logs []item
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasPrefix(e.Name(), "agy-pro-") || !strings.HasSuffix(e.Name(), ".log") {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".log") || (!strings.HasPrefix(name, "agy-pro-") && !strings.HasPrefix(name, "seamless-")) {
 			continue
 		}
 		var mt int64

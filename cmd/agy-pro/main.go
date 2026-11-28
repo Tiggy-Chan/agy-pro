@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -19,6 +20,7 @@ import (
 	"github.com/Tiggy-Chan/agy-pro/internal/quota"
 	"github.com/Tiggy-Chan/agy-pro/internal/router"
 	"github.com/Tiggy-Chan/agy-pro/internal/runner"
+	"github.com/Tiggy-Chan/agy-pro/internal/seamless"
 	"github.com/Tiggy-Chan/agy-pro/internal/sessions"
 	"github.com/Tiggy-Chan/agy-pro/internal/tui"
 	"github.com/Tiggy-Chan/agy-pro/internal/ui"
@@ -68,6 +70,7 @@ func renderHelp() string {
 	b.WriteString(cmdLine("--reserve <0-50>", i18n.T("help.opt.reserve")))
 	b.WriteString(cmdLine("--auto-compact <val>", i18n.T("help.opt.auto_compact")))
 	b.WriteString(cmdLine("--refresh", i18n.T("help.opt.refresh")))
+	b.WriteString(cmdLine("--seamless", i18n.T("help.opt.seamless")))
 	b.WriteString(cmdLine("--no-auto-switch", i18n.T("help.opt.no_auto_switch")))
 	b.WriteString(cmdLine("-- <agy flags...>", i18n.T("help.opt.passthrough")))
 	b.WriteString("\n")
@@ -1279,6 +1282,7 @@ type runOptions struct {
 	explicitAccount string
 	title           string
 	autoSwitch      bool
+	seamless        bool
 	refreshBefore   bool
 	forceNext       bool
 	resumeLast      bool
@@ -1288,8 +1292,13 @@ type runOptions struct {
 	flagErr         string
 }
 
+func seamlessEnvEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("AGY_PRO_SEAMLESS"))
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
 func parseRunFlags(argv []string) (runOptions, []string) {
-	opts := runOptions{autoSwitch: true}
+	opts := runOptions{autoSwitch: true, seamless: seamlessEnvEnabled()}
 	var pass []string
 	for i := 0; i < len(argv); i++ {
 		a := argv[i]
@@ -1341,6 +1350,10 @@ func parseRunFlags(argv []string) (runOptions, []string) {
 			}
 		case a == "--no-auto-switch":
 			opts.autoSwitch = false
+		case a == "--seamless":
+			opts.seamless = true
+		case a == "--no-seamless":
+			opts.seamless = false
 		case a == "--refresh":
 			opts.refreshBefore = true
 		default:
@@ -1472,6 +1485,51 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 	}
 	v.PruneLogs(20)
 
+	var seamlessProxy *seamless.Proxy
+	var seamlessProvider *seamless.VaultTokenProvider
+	var liveState struct {
+		mu       sync.Mutex
+		curEmail string
+		curConv  string
+		writeFn  func(email, cid string)
+	}
+	liveState.curEmail = currentEmail
+	if opts.seamless {
+		if runtime.GOOS == "windows" {
+			fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("run.seamless_windows_unsupported"))
+		} else {
+			seamlessLog := filepath.Join(v.LogsDir, fmt.Sprintf("seamless-%d.log", os.Getpid()))
+			seamlessProvider = seamless.NewVaultTokenProvider(
+				v, agyBin, currentEmail, reservePct, opts.autoSwitch,
+				func(oldEmail, newEmail, reason string) {
+					liveState.mu.Lock()
+					liveState.curEmail = newEmail
+					cid := liveState.curConv
+					fn := liveState.writeFn
+					liveState.mu.Unlock()
+					if fn != nil {
+						fn(newEmail, cid)
+					}
+					spawnDetachedSelf(v.StateDir, "_verify", oldEmail)
+					if !printMode && !st.NotifyDisabled {
+						runner.NewNotifier(true, runner.DefaultNotifyMinDuration).NotifyFailover(oldEmail, newEmail, "seamless")
+					}
+				},
+			)
+			sp, err := seamless.Start(seamless.Options{
+				Provider: seamlessProvider,
+				LogPath:  seamlessLog,
+				TempDir:  v.StateDir,
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s %s\n", ui.SAmberB.Render("!"), i18n.T("run.seamless_start_err", err))
+			} else {
+				seamlessProxy = sp
+				defer seamlessProxy.Close()
+			}
+		}
+	}
+
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		acct := accounts[currentEmail]
 		if !printMode {
@@ -1522,6 +1580,9 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			} else {
 				qParts = append(qParts, ui.SDim.Render("native direct"))
 			}
+			if seamlessProxy != nil {
+				qParts = append([]string{ui.SHeadDim.Render("seamless")}, qParts...)
+			}
 			fmt.Fprintf(os.Stderr, "%s %s %s %s %s\n",
 				ui.Brand("agy-pro"),
 				ui.SDim.Render("·"),
@@ -1541,6 +1602,9 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 
 		compactVal, hasCompact := vault.ResolveAutoCompact(st, opts.autoCompact)
 		agyEnv := vault.CleanNativeEnvWithCompact("", compactVal, hasCompact)
+		if seamlessProxy != nil {
+			agyEnv = seamlessProxy.ChildEnv(agyEnv)
+		}
 
 		var res *runner.RunResult
 		if printMode {
@@ -1549,15 +1613,27 @@ func cmdRun(v *vault.Vault, agyArgs []string, opts runOptions) int {
 			pid := os.Getpid()
 			ttyName := vault.CurrentTTYName()
 			startedAt := float64(time.Now().Unix())
-			writeLive := func(cid string) {
+			writeLiveFor := func(email, cid string) {
 				v.WriteLiveSession(vault.LiveSession{
 					PID:       pid,
 					ConvID:    cid,
-					Email:     currentEmail,
+					Email:     email,
 					TTY:       ttyName,
 					CWD:       cwd,
 					StartedAt: startedAt,
 				})
+			}
+			liveState.mu.Lock()
+			liveState.curEmail = currentEmail
+			liveState.curConv = convID
+			liveState.writeFn = writeLiveFor
+			liveState.mu.Unlock()
+			writeLive := func(cid string) {
+				liveState.mu.Lock()
+				liveState.curConv = cid
+				em := liveState.curEmail
+				liveState.mu.Unlock()
+				writeLiveFor(em, cid)
 			}
 			writeLive(convID)
 			res = runner.RunInteractiveOnce(agyBin, fullArgs, logPath, runner.InteractiveOptions{

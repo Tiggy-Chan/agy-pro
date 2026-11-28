@@ -19,6 +19,7 @@
   "help.opt.reserve": "本次覆盖低余量提前切号水位线",
   "help.opt.auto_compact": "本次覆盖 Auto-compact 阈值（如 90%、800K、off）",
   "help.opt.refresh": "启动前先联网刷新当前主号额度",
+  "help.opt.seamless": "实验特性：通过子进程临时本地代理实现撞 429 零中断静默切号（Linux/macOS）",
   "help.opt.no_auto_switch": "关闭撞 5h/7d 墙自动秒切续跑",
   "help.opt.passthrough": "POSIX 显式透传后续全部参数给原生 agy",
   "help.examples": "示例",
@@ -245,6 +246,8 @@
   "run.kind.suspected": "疑似额度耗尽（临时冷却）",
   "run.failover_no_conv": "未定位到可安全续接的本地会话文件，已切至新主号并停止自动续跑（避免误开空对话）。请运行 %s 选择原会话继续。",
   "run.first_run_init": "首次启动已初始化默认配置 Auto-compact=%s（零 dotfiles 修改）",
+  "run.seamless_windows_unsupported": "--seamless 静默热切目前仅支持 Linux/macOS，已自动回退为标准零中转切号模式",
+  "run.seamless_start_err": "无法启动本地静默代理（%v），已自动回退为标准零中转切号模式",
 
   "runner.resume_prompt": "continue",
   "notify.default_session": "当前会话",

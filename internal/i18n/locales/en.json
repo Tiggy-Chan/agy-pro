@@ -19,6 +19,7 @@
   "help.opt.reserve": "Override low-quota proactive switch threshold for this run",
   "help.opt.auto_compact": "Override Auto-compact threshold (e.g. 90%, 800K, off)",
   "help.opt.refresh": "Refresh active account quota before launching",
+  "help.opt.seamless": "Experimental: zero-interruption mid-turn 429 failover via ephemeral loopback proxy (Linux/macOS)",
   "help.opt.no_auto_switch": "Disable automatic 5h/7d failover and resume",
   "help.opt.passthrough": "POSIX explicit passthrough of all remaining flags to native agy",
   "help.examples": "Examples",
@@ -245,6 +246,8 @@
   "run.kind.suspected": "suspected quota exhaustion (temporary cooldown)",
   "run.failover_no_conv": "No persisted local session file found to safely resume. Switched active account; run %s to pick your conversation.",
   "run.first_run_init": "Initialized default Auto-compact=%s (zero dotfiles modified)",
+  "run.seamless_windows_unsupported": "--seamless mode is currently supported on Linux/macOS only; falling back to standard zero-proxy failover",
+  "run.seamless_start_err": "failed to start seamless proxy (%v); falling back to standard zero-proxy failover",
 
   "runner.resume_prompt": "continue",
   "notify.default_session": "Active Session",
