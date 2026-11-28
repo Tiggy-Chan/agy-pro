@@ -22,7 +22,7 @@ import (
 )
 
 // Version is the build version string, overridable via -ldflags "-X .../internal/vault.Version=...".
-var Version = "0.1.0-dev"
+var Version = "0.1.0"
 
 const (
 	DefaultAutoCompact       = "90%"
