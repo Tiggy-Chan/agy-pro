@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -151,15 +152,18 @@ func Start(opts Options) (*Proxy, error) {
 		sim429On:       os.Getenv("AGY_PRO_SEAMLESS_SIMULATE_429_ONCE") == "1",
 	}
 
+	httpErrLog := log.New(&proxyLogWriter{p: p}, "[http] ", log.Ltime|log.Lmicroseconds)
 	p.mitmServer = &http.Server{
-		Handler: http.HandlerFunc(p.handleInterceptedHTTP),
+		Handler:  http.HandlerFunc(p.handleInterceptedHTTP),
+		ErrorLog: httpErrLog,
 		TLSConfig: &tls.Config{
 			GetCertificate: ca.GetCertificate,
 			NextProtos:     []string{"h2", "http/1.1"},
 		},
 	}
 	p.proxyServer = &http.Server{
-		Handler: http.HandlerFunc(p.handleProxyRequest),
+		Handler:  http.HandlerFunc(p.handleProxyRequest),
+		ErrorLog: httpErrLog,
 	}
 
 	go func() { _ = p.mitmServer.ServeTLS(mitmLn, "", "") }()
@@ -273,9 +277,12 @@ func (p *Proxy) Close() {
 		_ = p.mitmListener.Close()
 		_ = p.listener.Close()
 		p.upstreamTr.CloseIdleConnections()
+		p.logMu.Lock()
 		if p.logFile != nil {
 			_ = p.logFile.Close()
+			p.logFile = nil
 		}
+		p.logMu.Unlock()
 		if p.caDir != "" {
 			_ = os.RemoveAll(p.caDir)
 		}
@@ -290,6 +297,24 @@ func (p *Proxy) logf(format string, args ...any) {
 	defer p.logMu.Unlock()
 	ts := time.Now().Format("15:04:05.000")
 	_, _ = fmt.Fprintf(p.logFile, "[%s] "+format+"\n", append([]any{ts}, args...)...)
+}
+
+// proxyLogWriter routes net/http internal server logs strictly to the proxy log file (or discards them),
+// guaranteeing ZERO stray bytes ever reach the user's live interactive TTY / stderr.
+type proxyLogWriter struct {
+	p *Proxy
+}
+
+func (w *proxyLogWriter) Write(b []byte) (int, error) {
+	if w.p == nil || w.p.logFile == nil {
+		return len(b), nil
+	}
+	w.p.logMu.Lock()
+	defer w.p.logMu.Unlock()
+	if w.p.logFile != nil {
+		_, _ = w.p.logFile.Write(b)
+	}
+	return len(b), nil
 }
 
 func (p *Proxy) shouldIntercept(hostPort string) bool {

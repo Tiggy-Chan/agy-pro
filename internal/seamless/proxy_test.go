@@ -453,3 +453,37 @@ func TestCleanNativeEnvStripsParentSeamlessProxyAndRestoresOriginal(t *testing.T
 		t.Fatalf("expected original HTTPS_PROXY restored to http://127.0.0.1:7890, got %q", foundProxy)
 	}
 }
+
+func TestSeamlessHTTPServerLogsNeverLeakToStderr(t *testing.T) {
+	logPath := t.TempDir() + "/seamless.log"
+	prov := &fakeProvider{accounts: []struct{ email, token string }{{"a@gmail.com", "tok-a"}}}
+	p, err := Start(Options{
+		Provider:       prov,
+		InterceptHosts: []string{"127.0.0.1"},
+		LogPath:        logPath,
+		TempDir:        t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer p.Close()
+
+	// Trigger a deliberate TLS bad-certificate error (client rejects ephemeral CA).
+	// ErrorLog MUST route strictly to logPath, never touching stderr/TTY!
+	pURL, _ := url.Parse(p.ProxyURL())
+	badClient := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(pURL),
+		},
+	}
+	_, _ = badClient.Get("https://127.0.0.1:443/fail")
+	p.Close()
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read seamless log failed: %v", err)
+	}
+	if !strings.Contains(string(raw), "[http]") {
+		t.Fatalf("expected net/http TLS error routed into seamless log file, got:\n%s", string(raw))
+	}
+}
