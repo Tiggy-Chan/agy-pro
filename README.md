@@ -100,7 +100,7 @@ Then sign in 2+ Google accounts (or import your existing login) and launch:
 agy-pro auth import  # Optional: import your current active official agy file token
 agy-pro auth login   # Sign in via official `agy acp --login` (repeat for each account)
 agy-pro ui           # Open 3-tab dashboard (Pool / Open Sessions / Token Usage)
-agy-pro              # Launch native agy directly with automatic 5h/7d failover
+agy-pro              # Launch native agy with default seamless 429 hot-swap
 ```
 
 ---
@@ -108,7 +108,7 @@ agy-pro              # Launch native agy directly with automatic 5h/7d failover
 ## Core Commands (9)
 
 ```bash
-agy-pro                                        # Launch native agy with auto-failover & resume
+agy-pro                                        # Launch native agy (default seamless 429 hot-swap + --resume fallback)
 agy-pro -- <native agy flags...>               # POSIX explicit passthrough (e.g. --dangerously-skip-permissions)
 
 agy-pro ui [--mask]                            # 3-tab TUI dashboard (Pool / Open Sessions / Token Usage; m masks emails)
@@ -147,7 +147,7 @@ agy-pro doctor [--mask]                        # Environment isolation, upstream
 
 ## Project Note
 
-> Reading through `agy-pro`'s codebase, what stands out most isn't cleverness — it's restraint. It refuses proxy gateways and double-PTY wrappers, hands the real TTY back to official `agy`, and stays quietly behind the scenes tailing logs and querying SQLite read-only under `flock` and atomic writes. It parses Protobuf wire frames directly over HTTP/2 gRPC for sub-second quota checks, yet preserves the official CLI as an automatic fallback. Its real craft shows in battle-scarred details: shielding CJK OSC-8 paths from C1 control-byte ghosting, resetting the Kitty keyboard protocol cleanly in `TerminalGuard`, and disabling OSC 11 probes for instant startup.
+> Reading through `agy-pro`'s codebase, what stands out most isn't cleverness — it's restraint. It refuses third-party gateways, binary patching, and double-PTY wrappers, hands the real TTY directly to official `agy`, and stays quietly behind the scenes tailing logs, querying SQLite read-only under `flock`, and running only an ephemeral process-local `127.0.0.1` loopback proxy that vanishes on exit (with `--no-seamless` zero-proxy fallback always one flag away). Its real craft shows in battle-scarred details: shielding CJK OSC-8 paths from C1 control-byte ghosting, resetting the Kitty keyboard protocol cleanly in `TerminalGuard`, isolating proxy logs from the live TTY, and disabling OSC 11 probes for instant startup.
 >
 > May `agy-pro` always keep the discipline of an invisible exoskeleton — resisting feature creep so native `agy` remains the protagonist — while staying vigilant with graceful fallbacks and contract tests at every seam where it touches upstream.
 
@@ -159,4 +159,4 @@ This project is source-available under the [agy-pro Non-Commercial & Personal Us
 
 ## Disclaimer
 
-`agy-pro` is an independent, unofficial CLI wrapper and is not affiliated with or endorsed by Google. It invokes your locally installed official `agy` binary directly without modifying its binary or proxying API requests.
+`agy-pro` is an independent, unofficial CLI wrapper and is not affiliated with or endorsed by Google. It invokes your locally installed official `agy` binary directly without modifying its binary or routing traffic through any third-party servers. By default, seamless mid-turn failover uses only an ephemeral, process-local `127.0.0.1` loopback proxy with an in-memory CA (destroyed on exit; never modifies OS trust stores), and `--no-seamless` disables it completely for pure zero-proxy direct mode.
